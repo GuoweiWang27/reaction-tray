@@ -110,7 +110,7 @@ export function GameScreen() {
             {level.board.filter((tile) => remaining.has(tile.tileId)).map((tile) => {
               const item = speciesById.get(tile.speciesId)
               if (!item) return null
-              const isSelectable = selectable.has(tile.tileId)
+              const isSelectable = state.status === 'playing' && selectable.has(tile.tileId)
               const style = {
                 '--x': tile.x,
                 '--y': tile.y,
