@@ -67,8 +67,8 @@ export function solveLevel(
 
   while (queue.length) {
     if (shortestPath && queue[0].path.length > shortestPath.length) return solvedResult()
-    if (visitedNodes >= limits.maxNodes) return shortestPath ? solvedResult() : failedResult('node-limit')
-    if (performance.now() - startedAt >= limits.timeoutMs) return shortestPath ? solvedResult() : failedResult('timeout')
+    if (visitedNodes >= limits.maxNodes) return failedResult('node-limit')
+    if (performance.now() - startedAt >= limits.timeoutMs) return failedResult('timeout')
 
     const current = queue.shift()!
     visitedNodes += 1

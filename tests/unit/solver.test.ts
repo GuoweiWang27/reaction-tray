@@ -39,6 +39,20 @@ const impossibleLevel = {
   goals: [{ kind: 'produce' as const, targetSpeciesId: 'species.water', count: 1 }],
 }
 
+const frontierLevel = {
+  ...verticalSliceLevels[0],
+  id: 'fixture.solver-frontier',
+  order: 1,
+  trayCapacity: 3,
+  allowedReactions: [{ reactionId: 'reaction.hydrogen-hydroxide', priority: 10 }],
+  goals: [{ kind: 'produce' as const, targetSpeciesId: 'species.water', count: 1 }],
+  board: [
+    tile('frontier-h-1', 'species.hydrogen-ion'),
+    tile('frontier-h-2', 'species.hydrogen-ion'),
+    tile('frontier-oh', 'species.hydroxide-ion'),
+  ],
+}
+
 describe.each(verticalSliceLevels)('$id', (level) => {
   it('has a no-tool solution within the CI bound', () => {
     const result = solveLevel({ level, reactions, conditions }, { maxNodes: 100_000, timeoutMs: 2_000 })
@@ -80,5 +94,16 @@ describe('progress command solver', () => {
     expect(nodeLimited).toMatchObject({ status: 'node-limit', path: [], safeFirstSteps: [] })
     expect(timedOut).toMatchObject({ status: 'timeout', path: [], safeFirstSteps: [] })
     expect(unsolved).toMatchObject({ status: 'unsolved', path: [], safeFirstSteps: [] })
+  })
+
+  it('does not report solved before the shortest-solution frontier is complete', () => {
+    const context: EngineContext = { level: frontierLevel, reactions, conditions }
+    const complete = solveLevel(context, { maxNodes: 100_000, timeoutMs: 2_000 })
+    const capped = solveLevel(context, { maxNodes: 6, timeoutMs: 2_000 })
+
+    expect(complete.status).toBe('solved')
+    if (complete.status !== 'solved') throw new Error('expected solved')
+    expect(complete.safeFirstSteps).toHaveLength(3)
+    expect(capped).toMatchObject({ status: 'node-limit', path: [], safeFirstSteps: [] })
   })
 })
