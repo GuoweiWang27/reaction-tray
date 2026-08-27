@@ -476,6 +476,7 @@ button.target-formula:focus-visible,
 .tile--target-reactant {
   border-color: var(--sand-dark);
   box-shadow: 0 0 0 2px var(--sand-pale), var(--shadow-panel);
+  animation: target-reactant-pulse 900ms ease-in-out both;
 }
 
 .tile-tag {
@@ -895,6 +896,11 @@ button:focus-visible {
   100% { opacity: 0; transform: translateY(-3px); }
 }
 
+@keyframes target-reactant-pulse {
+  0%, 100% { border-color: var(--line-strong); box-shadow: var(--shadow-panel); }
+  18%, 62% { border-color: var(--sand-dark); box-shadow: 0 0 0 2px var(--sand-pale), var(--shadow-panel); }
+}
+
 @keyframes awaiting-condition {
   0%, 100% { opacity: 1; }
   50% { opacity: 0.6; }
@@ -965,6 +971,12 @@ button:focus-visible {
 
   .slot-float {
     animation: none;
+  }
+
+  .tile--target-reactant {
+    animation: none;
+    border-color: var(--sand-dark);
+    box-shadow: 0 0 0 2px var(--sand-pale), var(--shadow-panel);
   }
 
   .tray-panel--awaiting,

@@ -17,6 +17,7 @@ type ReactionCueKind = 'precipitate' | 'product' | 'signal'
 type ReactionCue = { id: number; kind: ReactionCueKind; label: string; formula: string; equation: string }
 type EffectReceipt = ReactionCue & { effectCount: number; total: number }
 type DirectionKey = 'ArrowLeft' | 'ArrowRight' | 'ArrowUp' | 'ArrowDown'
+type TileActionSource = 'pointer' | 'keyboard'
 
 const clearedLevelsStorageKey = 'reaction-tray.cleared-levels.v1'
 
@@ -78,6 +79,32 @@ const nextDirectionalTileId = (
   return pool[0]?.tileId ?? null
 }
 
+const nextKeyboardFocusTileId = (
+  selectedTileId: string,
+  nextState: ReturnType<typeof createGame>,
+  level: typeof verticalSliceLevels[number],
+): string | null => {
+  const selectedTile = level.board.find((tile) => tile.tileId === selectedTileId)
+  if (!selectedTile) return null
+  const remaining = new Set(nextState.remainingTileIds)
+  const visibleTiles = level.board.filter((tile) => remaining.has(tile.tileId) && tile.tileId !== selectedTileId)
+  if (!visibleTiles.length) return null
+  const selectable = nextState.status === 'playing' ? new Set(selectableTileIds(nextState, level)) : new Set<string>()
+  return [...visibleTiles].sort((left, right) => {
+    const leftOpen = selectable.has(left.tileId) ? 0 : 1
+    const rightOpen = selectable.has(right.tileId) ? 0 : 1
+    const leftLayer = left.z === selectedTile.z ? 0 : 1
+    const rightLayer = right.z === selectedTile.z ? 0 : 1
+    const leftDistance = Math.abs(left.x - selectedTile.x) + Math.abs(left.y - selectedTile.y)
+    const rightDistance = Math.abs(right.x - selectedTile.x) + Math.abs(right.y - selectedTile.y)
+    return leftOpen - rightOpen
+      || leftLayer - rightLayer
+      || leftDistance - rightDistance
+      || Math.abs(left.x - selectedTile.x) - Math.abs(right.x - selectedTile.x)
+      || level.board.indexOf(left) - level.board.indexOf(right)
+  })[0]?.tileId ?? null
+}
+
 const cueKind = (effect: ReactionEffect): ReactionCueKind => effect.observableCue === 'precipitate'
   ? 'precipitate'
   : effect.observableCue === 'water'
@@ -98,12 +125,15 @@ export function GameScreen() {
   const [hintedTileId, setHintedTileId] = useState<string | null>(null)
   const [clearedLevelIds, setClearedLevelIds] = useState(readClearedLevelIds)
   const [targetHighlightActive, setTargetHighlightActive] = useState(false)
+  const [targetHighlightCycle, setTargetHighlightCycle] = useState(0)
   const [slotFloat, setSlotFloat] = useState<{ slotNumber: number; formula: string } | null>(null)
   const cueTimer = useRef<number | null>(null)
   const slotFloatTimer = useRef<number | null>(null)
+  const targetHighlightTimer = useRef<number | null>(null)
   const effectSequence = useRef(0)
   const previousStatus = useRef(state.status)
   const tileRefs = useRef(new Map<string, HTMLButtonElement>())
+  const pendingKeyboardFocus = useRef<{ preferredTileId: string | null } | null>(null)
   const selectable = new Set(selectableTileIds(state, level))
   const remaining = new Set(state.remainingTileIds)
   const visibleTiles = level.board.filter((tile) => remaining.has(tile.tileId))
@@ -183,6 +213,24 @@ export function GameScreen() {
     }, 600)
   }
 
+  const clearTargetHighlight = () => {
+    if (targetHighlightTimer.current !== null) {
+      window.clearTimeout(targetHighlightTimer.current)
+      targetHighlightTimer.current = null
+    }
+    setTargetHighlightActive(false)
+  }
+
+  const triggerTargetHighlight = () => {
+    if (targetHighlightTimer.current !== null) window.clearTimeout(targetHighlightTimer.current)
+    setTargetHighlightActive(true)
+    setTargetHighlightCycle((cycle) => cycle + 1)
+    targetHighlightTimer.current = window.setTimeout(() => {
+      setTargetHighlightActive(false)
+      targetHighlightTimer.current = null
+    }, 900)
+  }
+
   const presentReactionEffects = (effects: ReactionEffect[]) => {
     if (!effects.length) return
     const firstId = effectSequence.current + 1
@@ -218,13 +266,28 @@ export function GameScreen() {
   useEffect(() => () => {
     if (cueTimer.current !== null) window.clearTimeout(cueTimer.current)
     if (slotFloatTimer.current !== null) window.clearTimeout(slotFloatTimer.current)
+    if (targetHighlightTimer.current !== null) window.clearTimeout(targetHighlightTimer.current)
   }, [])
 
-  const send = (command: GameCommand) => {
+  useEffect(() => {
+    const pending = pendingKeyboardFocus.current
+    if (!pending) return
+    const candidateIds = [...new Set([pending.preferredTileId, ...visibleTiles.map((tile) => tile.tileId)].filter((tileId): tileId is string => Boolean(tileId)))]
+    pendingKeyboardFocus.current = null
+    const focusable = candidateIds
+      .map((tileId) => tileRefs.current.get(tileId))
+      .find((element): element is HTMLButtonElement => Boolean(element && !element.disabled && element.tabIndex >= 0))
+    focusable?.focus()
+  }, [level.id, state.remainingTileIds])
+
+  const send = (command: GameCommand, restoreKeyboardFocus = false) => {
     clearReactionCue(command.type === 'undo')
     if (command.type === 'select-tile' || command.type === 'undo') clearSlotFloat()
     setHintedTileId(null)
     const result = applyCommand(state, command, context)
+    if (restoreKeyboardFocus && command.type === 'select-tile') {
+      pendingKeyboardFocus.current = { preferredTileId: nextKeyboardFocusTileId(command.tileId, result.state, level) }
+    }
     setState(result.state)
     const reactionEffects = result.effects.filter((effect): effect is ReactionEffect => effect.type === 'reaction')
     presentReactionEffects(reactionEffects)
@@ -247,7 +310,8 @@ export function GameScreen() {
   const restartLevel = () => {
     clearReactionCue(true)
     clearSlotFloat()
-    setTargetHighlightActive(false)
+    clearTargetHighlight()
+    pendingKeyboardFocus.current = null
     setHintedTileId(null)
     setState(createGame(level))
     setFeedback('实验台已复位 · 选择未被遮挡的物质卡。')
@@ -256,27 +320,28 @@ export function GameScreen() {
   const chooseLevel = (index: number) => {
     clearReactionCue(true)
     clearSlotFloat()
-    setTargetHighlightActive(false)
+    clearTargetHighlight()
+    pendingKeyboardFocus.current = null
     setHintedTileId(null)
     setLevelIndex(index)
     setState(createGame(verticalSliceLevels[index]))
     setFeedback('实验台已切换 · 选择未被遮挡的物质卡。')
   }
 
-  const handleTileAction = (tileId: string) => {
+  const handleTileAction = (tileId: string, source: TileActionSource = 'pointer') => {
     const isSelectable = state.status === 'playing' && selectable.has(tileId)
     if (!isSelectable) {
       setHintedTileId(tileId)
       return
     }
     setHintedTileId(null)
-    send({ type: 'select-tile', tileId })
+    send({ type: 'select-tile', tileId }, source === 'keyboard')
   }
 
   const handleTileKeyDown = (event: React.KeyboardEvent<HTMLButtonElement>, tileId: string) => {
     if (event.key === 'Enter' || event.key === ' ' || event.key === 'Spacebar') {
       event.preventDefault()
-      handleTileAction(tileId)
+      handleTileAction(tileId, 'keyboard')
       return
     }
     const nextTileId = nextDirectionalTileId(tileId, event.key, visibleTiles)
@@ -345,8 +410,8 @@ export function GameScreen() {
                 type="button"
                 className={targetHighlightActive ? 'target-formula target-formula--active' : 'target-formula'}
                 aria-pressed={targetHighlightActive}
-                aria-label={`目标产物 ${target.formula}，${targetHighlightActive ? '关闭' : '查看'}对应反应物`}
-                onClick={() => setTargetHighlightActive((active) => !active)}
+                aria-label={`目标产物 ${target.formula}，${targetHighlightActive ? '重新提示' : '查看'}对应反应物`}
+                onClick={triggerTargetHighlight}
               >
                 {target.formula}
               </button>
@@ -379,7 +444,7 @@ export function GameScreen() {
               } as CSSProperties
               return (
                 <button
-                  key={tile.tileId}
+                  key={targetHighlightActive ? `${tile.tileId}-${targetHighlightCycle}` : tile.tileId}
                   type="button"
                   data-testid={tile.tileId}
                   className={[
