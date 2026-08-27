@@ -3,6 +3,15 @@ import type { GameState } from './engine'
 
 export const safetyDisclaimer = '本游戏只呈现反应关系，不提供实验操作步骤。'
 
+const safetyPolicyPrefixes = ['不展示', '游戏', '本游戏', '只展示', '仅展示', '不提供']
+
+const normalizeSafetyNote = (note: string): string[] => note
+  .split(/[；。]/u)
+  .map((clause) => clause.trim().replace(/[.!！？?]+$/u, ''))
+  .filter((clause) => clause.length > 0)
+  .filter((clause) => !safetyPolicyPrefixes.some((prefix) => clause.startsWith(prefix)))
+  .map((clause) => `${clause}。`)
+
 export function getSafetyNotes(
   level: Pick<LevelDefinition, 'allowedReactions' | 'board'>,
   reactions: readonly ReactionDefinition[],
@@ -10,12 +19,13 @@ export function getSafetyNotes(
 ): string[] {
   const reactionsById = new Map(reactions.map((reaction) => [reaction.id, reaction]))
   const speciesById = new Map(species.map((item) => [item.id, item]))
-  const notes = [
+  const sourceNotes = [
     ...level.allowedReactions.map((entry) => reactionsById.get(entry.reactionId)?.safetyNote),
     ...level.board.map((tile) => speciesById.get(tile.speciesId)?.safetyNote),
   ].filter((note): note is string => Boolean(note))
-  if (!notes.length) return []
-  return [...new Set([...notes, safetyDisclaimer])]
+  if (!sourceNotes.length) return []
+  const facts = sourceNotes.flatMap(normalizeSafetyNote)
+  return [...new Set([...facts, safetyDisclaimer])]
 }
 
 export function getReactionFeedback(
