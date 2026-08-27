@@ -33,16 +33,45 @@ export function GameScreen() {
   const speciesById = useMemo(() => new Map(species.map((item) => [item.id, item])), [])
   const conditionById = useMemo(() => new Map(conditions.map((item) => [item.id, item])), [])
   const [activeCues, setActiveCues] = useState<ReactionCue[]>([])
-  const [effectReceipt, setEffectReceipt] = useState<EffectReceipt | null>(null)
+  const [effectReceipts, setEffectReceipts] = useState<EffectReceipt[]>([])
+  const [hintedTileId, setHintedTileId] = useState<string | null>(null)
   const cueTimer = useRef<number | null>(null)
   const effectSequence = useRef(0)
   const selectable = new Set(selectableTileIds(state, level))
   const remaining = new Set(state.remainingTileIds)
+  const hintedTile = hintedTileId ? level.board.find((tile) => tile.tileId === hintedTileId) : undefined
+  const hintedBlockerIds = new Set(hintedTile?.blockedByTileIds.filter((id) => remaining.has(id)) ?? [])
+  const hintedBlockerFormulas = [...hintedBlockerIds]
+    .map((tileId) => level.board.find((tile) => tile.tileId === tileId))
+    .map((tile) => tile ? speciesById.get(tile.speciesId)?.formula : undefined)
+    .filter((formula): formula is string => Boolean(formula))
   const goal = level.goals[0]
   const target = goal?.kind === 'produce' ? speciesById.get(goal.targetSpeciesId) : undefined
   const produced = goal?.kind === 'produce' ? (state.produced[goal.targetSpeciesId] ?? 0) : 0
   const goalCount = goal?.kind === 'produce' ? goal.count : 0
   const progress = goalCount > 0 ? Math.min(100, (produced / goalCount) * 100) : 0
+  const latestReceipt = effectReceipts[0]
+  const awaitingCondition = state.status === 'awaiting-condition'
+  const hintCopy = hintedTileId
+    ? hintedBlockerFormulas.length > 0
+      ? `遮挡关系 · 先取走高亮牌：${hintedBlockerFormulas.join('、')}。`
+      : state.status === 'playing'
+        ? '当前牌没有可见遮挡关系。'
+        : '关卡已结束 · 剩余牌不可操作。'
+    : null
+  const coachCopy = level.order === 1 && state.status === 'playing'
+    ? state.moveCount === 0
+      ? '第 1 步 · 取一张未被遮挡的卡'
+      : state.moveCount === 1
+        ? '第 2 步 · 再找能与它反应的卡'
+        : state.moveCount <= 2
+          ? '第 3 步 · 观察槽中产物与目标变化'
+          : null
+    : null
+  const feedbackCopy = hintCopy ?? coachCopy ?? feedback
+  const feedbackClassName = hintCopy ? 'feedback feedback--hint' : coachCopy ? 'feedback feedback--coach' : 'feedback'
+  const undoRemaining = Math.max(0, level.toolLimits.undo - state.undoUsed)
+  const undoLabel = undoRemaining === 0 ? 'LIMIT REACHED' : `UNDO ${undoRemaining}/${level.toolLimits.undo}`
   const statusLabel = state.status === 'won'
     ? 'COMPLETE'
     : state.status === 'lost'
@@ -58,7 +87,7 @@ export function GameScreen() {
     }
     if (resetSequence) effectSequence.current = 0
     setActiveCues([])
-    setEffectReceipt(null)
+    if (resetSequence) setEffectReceipts([])
   }
 
   const presentReactionEffects = (effects: ReactionEffect[]) => {
@@ -70,9 +99,13 @@ export function GameScreen() {
       return { id: firstId + index, kind, label: cueLabel(kind), formula, equation: effect.equation }
     })
     effectSequence.current += cues.length
-    const lastCue = cues[cues.length - 1]
+    const newReceipts = cues.map((cue, index) => ({
+      ...cue,
+      effectCount: effects.length,
+      total: firstId + index,
+    })).reverse()
     setActiveCues(cues)
-    setEffectReceipt({ ...lastCue, effectCount: effects.length, total: effectSequence.current })
+    setEffectReceipts((current) => [...newReceipts, ...current].slice(0, 3))
     const reducedMotion = window.matchMedia?.('(prefers-reduced-motion: reduce)').matches ?? false
     if (cueTimer.current !== null) window.clearTimeout(cueTimer.current)
     cueTimer.current = window.setTimeout(() => {
@@ -87,6 +120,7 @@ export function GameScreen() {
 
   const send = (command: GameCommand) => {
     clearReactionCue(command.type === 'undo')
+    setHintedTileId(null)
     const result = applyCommand(state, command, context)
     setState(result.state)
     const reactionEffects = result.effects.filter((effect): effect is ReactionEffect => effect.type === 'reaction')
@@ -103,19 +137,21 @@ export function GameScreen() {
 
   const restartLevel = () => {
     clearReactionCue(true)
+    setHintedTileId(null)
     setState(createGame(level))
     setFeedback('实验台已复位 · 选择未被遮挡的物质卡。')
   }
 
   const chooseLevel = (index: number) => {
     clearReactionCue(true)
+    setHintedTileId(null)
     setLevelIndex(index)
     setState(createGame(verticalSliceLevels[index]))
     setFeedback('实验台已切换 · 选择未被遮挡的物质卡。')
   }
 
   return (
-    <main className="game-shell">
+    <main className="game-shell" data-game-status={state.status}>
       <div className="console">
         <header className="instrument-header">
           <div>
@@ -170,6 +206,7 @@ export function GameScreen() {
               const item = speciesById.get(tile.speciesId)
               if (!item) return null
               const isSelectable = state.status === 'playing' && selectable.has(tile.tileId)
+              const blockerIds = tile.blockedByTileIds.filter((id) => remaining.has(id))
               const style = {
                 '--x': tile.x,
                 '--y': tile.y,
@@ -181,11 +218,26 @@ export function GameScreen() {
                   key={tile.tileId}
                   type="button"
                   data-testid={tile.tileId}
-                  className={isSelectable ? 'tile tile--open' : 'tile tile--locked'}
+                  className={[
+                    'tile',
+                    isSelectable ? 'tile--open' : 'tile--locked',
+                    hintedBlockerIds.has(tile.tileId) ? 'tile--blocking' : '',
+                  ].filter(Boolean).join(' ')}
                   style={style}
-                  disabled={!isSelectable}
-                  onClick={() => send({ type: 'select-tile', tileId: tile.tileId })}
-                  aria-label={`${item.formula}，${accessibleSpeciesName(item)}，${isSelectable ? '可取出' : '被其他卡牌遮挡'}`}
+                  aria-disabled={isSelectable ? undefined : true}
+                  onMouseEnter={() => setHintedTileId(isSelectable ? null : tile.tileId)}
+                  onMouseLeave={() => setHintedTileId((current) => current === tile.tileId ? null : current)}
+                  onFocus={() => setHintedTileId(isSelectable ? null : tile.tileId)}
+                  onBlur={() => setHintedTileId((current) => current === tile.tileId ? null : current)}
+                  onClick={() => {
+                    if (!isSelectable) {
+                      setHintedTileId(tile.tileId)
+                      return
+                    }
+                    setHintedTileId(null)
+                    send({ type: 'select-tile', tileId: tile.tileId })
+                  }}
+                  aria-label={`${item.formula}，${accessibleSpeciesName(item)}，${isSelectable ? '可取出' : blockerIds.length ? '被其他卡牌遮挡' : '当前不可操作'}`}
                 >
                   <span className="tile-tag">{isSelectable ? 'OPEN' : 'LOCKED'}</span>
                   <strong className="tile-formula">{item.formula}</strong>
@@ -206,19 +258,31 @@ export function GameScreen() {
               </div>
             )}
           </div>
-          {effectReceipt && (
+          {latestReceipt && (
             <div
-              className={`effect-receipt effect-receipt--${effectReceipt.kind}`}
+              className={`effect-receipt effect-receipt--${latestReceipt.kind}`}
               data-testid="reaction-effect"
-              data-cue-kind={effectReceipt.kind}
-              data-effect-count={effectReceipt.effectCount}
-              data-effect-total={effectReceipt.total}
+              data-cue-kind={latestReceipt.kind}
+              data-effect-count={latestReceipt.effectCount}
+              data-effect-total={latestReceipt.total}
               role="img"
-              aria-label={`${effectReceipt.label}，${effectReceipt.formula}，已消费 ${effectReceipt.total} 个反应效果`}
+              aria-label={`反应日志，最新 ${latestReceipt.label}，${latestReceipt.formula}，已消费 ${latestReceipt.total} 个反应效果，共 ${effectReceipts.length} 条`}
             >
-              <span>{effectReceipt.label}</span>
-              <strong>{effectReceipt.formula}</strong>
-              <small>EFFECT {String(effectReceipt.total).padStart(2, '0')} · {effectReceipt.equation}</small>
+              <div className="effect-receipt-list">
+                {effectReceipts.map((receipt, index) => (
+                  <div key={receipt.id} className={index === 0 ? 'effect-receipt-item' : 'effect-receipt-item effect-receipt-item--history'}>
+                    {index === 0 ? (
+                      <>
+                        <span>{receipt.label}</span>
+                        <strong>{receipt.formula}</strong>
+                        <small>EFFECT {String(receipt.total).padStart(2, '0')} · {receipt.equation}</small>
+                      </>
+                    ) : (
+                      <strong>{receipt.formula}</strong>
+                    )}
+                  </div>
+                ))}
+              </div>
             </div>
           )}
           <p className="field-instruction" id="field-instruction">
@@ -227,11 +291,12 @@ export function GameScreen() {
           </p>
         </section>
 
-        <section className="tray-panel" aria-labelledby="tray-heading">
+        <section className={awaitingCondition ? 'tray-panel tray-panel--awaiting' : 'tray-panel'} aria-labelledby="tray-heading">
           <div className="panel-bar">
             <h2 id="tray-heading">REACTION TRAY</h2>
             <span>{state.tray.length} / {level.trayCapacity} SLOTS</span>
           </div>
+          {awaitingCondition && <p className="panel-status panel-status--awaiting">AWAITING CONDITION</p>}
           <div
             className="tray"
             style={{ '--tray-columns': level.trayCapacity } as CSSProperties}
@@ -254,11 +319,12 @@ export function GameScreen() {
         </section>
 
         {level.availableConditionIds.length > 0 && (
-          <section className="condition-panel" aria-labelledby="condition-heading">
+          <section className={awaitingCondition ? 'condition-panel condition-panel--awaiting' : 'condition-panel'} aria-labelledby="condition-heading">
             <div className="panel-bar">
               <h2 id="condition-heading">CONDITION CONTROL</h2>
               <span>OPTIONAL INPUT</span>
             </div>
+            {awaitingCondition && <p className="panel-status panel-status--awaiting">AWAITING CONDITION</p>}
             <div className="condition-list">
               {level.availableConditionIds.map((conditionId) => {
                 const condition = conditionById.get(conditionId)
@@ -289,12 +355,12 @@ export function GameScreen() {
             onClick={() => send({ type: 'undo' })}
           >
             <span>撤回上一步</span>
-            <small>{state.undoUsed >= level.toolLimits.undo ? 'LIMIT REACHED' : 'ATOMIC RESTORE'}</small>
+            <small>{undoLabel}</small>
           </button>
           <span className="move-readout">MOVE {String(state.moveCount).padStart(2, '0')}</span>
         </div>
 
-        <p className="feedback" role="status" aria-live="polite">{feedback}</p>
+        <p className={feedbackClassName} role="status" aria-live="polite">{feedbackCopy}</p>
 
         {(state.status === 'won' || state.status === 'lost') && (
           <section className={`outcome outcome--${state.status}`} aria-label={state.status === 'won' ? '关卡完成' : '关卡失败'}>

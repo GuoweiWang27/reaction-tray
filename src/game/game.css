@@ -319,6 +319,23 @@ button {
   letter-spacing: 0.1em;
 }
 
+.panel-status {
+  margin: 7px 0 0;
+  color: var(--sand-dark);
+  font-family: var(--mono-font);
+  font-size: var(--text-micro);
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.tray-panel--awaiting,
+.condition-panel--awaiting {
+  outline: 2px solid var(--sand);
+  outline-offset: 2px;
+  animation: awaiting-condition 1.2s ease-in-out infinite;
+}
+
 .board {
   position: relative;
   height: 334px;
@@ -405,6 +422,20 @@ button {
   cursor: not-allowed;
   filter: saturate(0.6);
   opacity: 1;
+}
+
+.tile--locked:hover,
+.tile--locked:focus-visible {
+  border-color: var(--sand);
+  box-shadow: var(--shadow-lift);
+  transform: translateY(-2px);
+}
+
+.tile--blocking {
+  border-color: var(--sand);
+  outline: 2px dashed var(--sand);
+  outline-offset: 2px;
+  background: var(--sand-pale);
 }
 
 .tile-tag {
@@ -505,9 +536,7 @@ button {
 
 .effect-receipt {
   display: grid;
-  grid-template-columns: auto auto minmax(0, 1fr);
-  align-items: center;
-  gap: 8px;
+  gap: 7px;
   margin-top: 7px;
   padding: 8px 9px;
   border-left: 3px solid var(--crimson);
@@ -522,8 +551,27 @@ button {
   background: var(--sand-pale);
 }
 
-.effect-receipt span,
-.effect-receipt small {
+.effect-receipt-list {
+  display: grid;
+  gap: 7px;
+  min-width: 0;
+}
+
+.effect-receipt-item {
+  display: grid;
+  grid-template-columns: auto auto minmax(0, 1fr);
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+
+.effect-receipt-item--history {
+  grid-template-columns: minmax(0, 1fr);
+  opacity: 0.6;
+}
+
+.effect-receipt-item span,
+.effect-receipt-item small {
   font-family: var(--mono-font);
   font-size: var(--text-micro);
   font-weight: 700;
@@ -531,17 +579,16 @@ button {
   text-transform: uppercase;
 }
 
-.effect-receipt strong {
+.effect-receipt-item strong {
+  min-width: 0;
   font-family: var(--formula-font);
   font-size: 1.04rem;
   font-weight: 600;
 }
 
-.effect-receipt small {
-  min-width: 0;
+.effect-receipt-item small {
   overflow: hidden;
   color: currentColor;
-  font-size: var(--text-micro);
   font-weight: 500;
   opacity: 0.72;
   text-overflow: ellipsis;
@@ -693,6 +740,24 @@ button {
   line-height: 1.55;
 }
 
+.feedback--coach,
+.feedback--hint {
+  padding: 8px 10px;
+  border-radius: var(--radius-card);
+}
+
+.feedback--coach {
+  border-left: 3px solid var(--crimson);
+  color: var(--crimson-deep);
+  background: var(--crimson-pale);
+}
+
+.feedback--hint {
+  border-left: 3px solid var(--sand);
+  color: var(--sand-dark);
+  background: var(--sand-pale);
+}
+
 .outcome {
   display: flex;
   align-items: center;
@@ -772,6 +837,11 @@ button:focus-visible {
   to { opacity: 1; transform: scale(1); }
 }
 
+@keyframes awaiting-condition {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.6; }
+}
+
 @media (max-width: 380px) {
   .game-shell {
     padding-inline: 9px;
@@ -833,5 +903,10 @@ button:focus-visible {
   .reaction-cue {
     animation: none;
     transform: none;
+  }
+
+  .tray-panel--awaiting,
+  .condition-panel--awaiting {
+    animation: none;
   }
 }
