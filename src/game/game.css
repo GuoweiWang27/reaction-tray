@@ -167,6 +167,7 @@ button {
   align-items: center;
   justify-content: center;
   gap: 7px;
+  flex-wrap: wrap;
   padding: 9px 5px;
   font-family: var(--body-font);
   font-size: 0.8125rem;
@@ -190,6 +191,15 @@ button {
   color: var(--sand-dark);
   font-family: var(--mono-font);
   font-size: var(--text-micro);
+}
+
+.level-cleared {
+  flex-basis: 100%;
+  color: var(--sand-dark);
+  font-family: var(--mono-font);
+  font-size: var(--text-micro);
+  font-weight: 700;
+  letter-spacing: 0.05em;
 }
 
 .target-panel,
@@ -249,16 +259,41 @@ button {
   border-left: 1px solid var(--line);
 }
 
-.target-formula,
 .tile-formula {
   font-family: var(--formula-font);
 }
 
 .target-formula {
+  display: inline-flex;
+  align-items: center;
+  justify-content: flex-end;
+  padding: 0;
+  border: 0;
   color: var(--crimson);
+  background: transparent;
+  font-family: var(--formula-font);
   font-size: 1.5rem;
   line-height: 1;
   white-space: nowrap;
+}
+
+button.target-formula {
+  cursor: pointer;
+}
+
+button.target-formula:hover,
+button.target-formula:focus-visible,
+.target-formula--active {
+  color: var(--crimson-deep);
+  text-decoration: underline;
+  text-decoration-thickness: 1px;
+  text-underline-offset: 4px;
+}
+
+.target-formula--active {
+  padding-inline: 4px;
+  border-radius: var(--radius-chip);
+  background: var(--sand-pale);
 }
 
 .target-readout strong {
@@ -436,6 +471,11 @@ button {
   outline: 2px dashed var(--sand);
   outline-offset: 2px;
   background: var(--sand-pale);
+}
+
+.tile--target-reactant {
+  border-color: var(--sand-dark);
+  box-shadow: 0 0 0 2px var(--sand-pale), var(--shadow-panel);
 }
 
 .tile-tag {
@@ -624,6 +664,17 @@ button {
 
 .tray-panel {
   background: var(--paper-warm);
+}
+
+.slot-float {
+  margin: 7px 2px 0;
+  color: var(--sand-dark);
+  font-family: var(--mono-font);
+  font-size: var(--text-micro);
+  font-weight: 700;
+  letter-spacing: 0.05em;
+  text-align: right;
+  animation: slot-float 600ms ease-out both;
 }
 
 .tray {
@@ -837,6 +888,13 @@ button:focus-visible {
   to { opacity: 1; transform: scale(1); }
 }
 
+@keyframes slot-float {
+  0% { opacity: 0; transform: translateY(4px); }
+  18% { opacity: 1; transform: translateY(0); }
+  78% { opacity: 1; }
+  100% { opacity: 0; transform: translateY(-3px); }
+}
+
 @keyframes awaiting-condition {
   0%, 100% { opacity: 1; }
   50% { opacity: 0.6; }
@@ -903,6 +961,10 @@ button:focus-visible {
   .reaction-cue {
     animation: none;
     transform: none;
+  }
+
+  .slot-float {
+    animation: none;
   }
 
   .tray-panel--awaiting,

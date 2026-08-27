@@ -16,6 +16,67 @@ type ReactionEffect = Extract<GameEffect, { type: 'reaction' }>
 type ReactionCueKind = 'precipitate' | 'product' | 'signal'
 type ReactionCue = { id: number; kind: ReactionCueKind; label: string; formula: string; equation: string }
 type EffectReceipt = ReactionCue & { effectCount: number; total: number }
+type DirectionKey = 'ArrowLeft' | 'ArrowRight' | 'ArrowUp' | 'ArrowDown'
+
+const clearedLevelsStorageKey = 'reaction-tray.cleared-levels.v1'
+
+const readClearedLevelIds = (): string[] => {
+  try {
+    const raw = window.localStorage.getItem(clearedLevelsStorageKey)
+    if (!raw) return []
+    const parsed: unknown = JSON.parse(raw)
+    if (!Array.isArray(parsed)) return []
+    return [...new Set(parsed.filter((levelId): levelId is string => typeof levelId === 'string'))]
+  } catch {
+    return []
+  }
+}
+
+const mergeClearedLevelId = (levelId: string): string[] => {
+  const merged = [...new Set([...readClearedLevelIds(), levelId])]
+  try {
+    window.localStorage.setItem(clearedLevelsStorageKey, JSON.stringify(merged))
+  } catch {
+    // Keep the in-memory record when browser storage is unavailable.
+  }
+  return merged
+}
+
+const directionKeys = new Set<DirectionKey>(['ArrowLeft', 'ArrowRight', 'ArrowUp', 'ArrowDown'])
+
+const nextDirectionalTileId = (
+  tileId: string,
+  key: string,
+  visibleTiles: typeof verticalSliceLevels[number]['board'],
+): string | null => {
+  if (!directionKeys.has(key as DirectionKey)) return null
+  const currentIndex = visibleTiles.findIndex((tile) => tile.tileId === tileId)
+  if (currentIndex < 0) return null
+  const current = visibleTiles[currentIndex]
+  const direction = key as DirectionKey
+  const candidates = visibleTiles.filter((tile) => {
+    if (tile.tileId === tileId) return false
+    if (direction === 'ArrowRight') return tile.x > current.x
+    if (direction === 'ArrowLeft') return tile.x < current.x
+    if (direction === 'ArrowDown') return tile.y > current.y
+    return tile.y < current.y
+  })
+  if (!candidates.length) return null
+
+  const horizontal = direction === 'ArrowLeft' || direction === 'ArrowRight'
+  const alignedCandidates = candidates.filter((tile) => horizontal ? tile.y === current.y : tile.x === current.x)
+  const pool = alignedCandidates.length ? alignedCandidates : candidates
+  pool.sort((left, right) => {
+    const leftPrimary = horizontal ? Math.abs(left.x - current.x) : Math.abs(left.y - current.y)
+    const rightPrimary = horizontal ? Math.abs(right.x - current.x) : Math.abs(right.y - current.y)
+    const leftCross = horizontal ? Math.abs(left.y - current.y) : Math.abs(left.x - current.x)
+    const rightCross = horizontal ? Math.abs(right.y - current.y) : Math.abs(right.x - current.x)
+    return leftPrimary - rightPrimary
+      || leftCross - rightCross
+      || visibleTiles.indexOf(left) - visibleTiles.indexOf(right)
+  })
+  return pool[0]?.tileId ?? null
+}
 
 const cueKind = (effect: ReactionEffect): ReactionCueKind => effect.observableCue === 'precipitate'
   ? 'precipitate'
@@ -35,10 +96,17 @@ export function GameScreen() {
   const [activeCues, setActiveCues] = useState<ReactionCue[]>([])
   const [effectReceipts, setEffectReceipts] = useState<EffectReceipt[]>([])
   const [hintedTileId, setHintedTileId] = useState<string | null>(null)
+  const [clearedLevelIds, setClearedLevelIds] = useState(readClearedLevelIds)
+  const [targetHighlightActive, setTargetHighlightActive] = useState(false)
+  const [slotFloat, setSlotFloat] = useState<{ slotNumber: number; formula: string } | null>(null)
   const cueTimer = useRef<number | null>(null)
+  const slotFloatTimer = useRef<number | null>(null)
   const effectSequence = useRef(0)
+  const previousStatus = useRef(state.status)
+  const tileRefs = useRef(new Map<string, HTMLButtonElement>())
   const selectable = new Set(selectableTileIds(state, level))
   const remaining = new Set(state.remainingTileIds)
+  const visibleTiles = level.board.filter((tile) => remaining.has(tile.tileId))
   const hintedTile = hintedTileId ? level.board.find((tile) => tile.tileId === hintedTileId) : undefined
   const hintedBlockerIds = new Set(hintedTile?.blockedByTileIds.filter((id) => remaining.has(id)) ?? [])
   const hintedBlockerFormulas = [...hintedBlockerIds]
@@ -47,6 +115,13 @@ export function GameScreen() {
     .filter((formula): formula is string => Boolean(formula))
   const goal = level.goals[0]
   const target = goal?.kind === 'produce' ? speciesById.get(goal.targetSpeciesId) : undefined
+  const targetReactantSpeciesIds = useMemo(() => {
+    if (goal?.kind !== 'produce') return new Set<string>()
+    const allowed = new Set(level.allowedReactions.map((entry) => entry.reactionId))
+    return new Set(reactions
+      .filter((reaction) => allowed.has(reaction.id) && reaction.products.some((product) => product.speciesId === goal.targetSpeciesId))
+      .flatMap((reaction) => reaction.reactants.map((reactant) => reactant.speciesId)))
+  }, [goal, level])
   const produced = goal?.kind === 'produce' ? (state.produced[goal.targetSpeciesId] ?? 0) : 0
   const goalCount = goal?.kind === 'produce' ? goal.count : 0
   const progress = goalCount > 0 ? Math.min(100, (produced / goalCount) * 100) : 0
@@ -72,6 +147,7 @@ export function GameScreen() {
   const feedbackClassName = hintCopy ? 'feedback feedback--hint' : coachCopy ? 'feedback feedback--coach' : 'feedback'
   const undoRemaining = Math.max(0, level.toolLimits.undo - state.undoUsed)
   const undoLabel = undoRemaining === 0 ? 'LIMIT REACHED' : `UNDO ${undoRemaining}/${level.toolLimits.undo}`
+  const clearedLevelIdSet = new Set(clearedLevelIds)
   const statusLabel = state.status === 'won'
     ? 'COMPLETE'
     : state.status === 'lost'
@@ -88,6 +164,23 @@ export function GameScreen() {
     if (resetSequence) effectSequence.current = 0
     setActiveCues([])
     if (resetSequence) setEffectReceipts([])
+  }
+
+  const clearSlotFloat = () => {
+    if (slotFloatTimer.current !== null) {
+      window.clearTimeout(slotFloatTimer.current)
+      slotFloatTimer.current = null
+    }
+    setSlotFloat(null)
+  }
+
+  const showSlotFloat = (slotNumber: number, formula: string) => {
+    if (slotFloatTimer.current !== null) window.clearTimeout(slotFloatTimer.current)
+    setSlotFloat({ slotNumber, formula })
+    slotFloatTimer.current = window.setTimeout(() => {
+      setSlotFloat(null)
+      slotFloatTimer.current = null
+    }, 600)
   }
 
   const presentReactionEffects = (effects: ReactionEffect[]) => {
@@ -114,17 +207,33 @@ export function GameScreen() {
     }, reducedMotion ? 80 : 900)
   }
 
+  useEffect(() => {
+    const previous = previousStatus.current
+    previousStatus.current = state.status
+    if (previous !== 'won' && state.status === 'won') {
+      setClearedLevelIds(() => mergeClearedLevelId(level.id))
+    }
+  }, [level.id, state.status])
+
   useEffect(() => () => {
     if (cueTimer.current !== null) window.clearTimeout(cueTimer.current)
+    if (slotFloatTimer.current !== null) window.clearTimeout(slotFloatTimer.current)
   }, [])
 
   const send = (command: GameCommand) => {
     clearReactionCue(command.type === 'undo')
+    if (command.type === 'select-tile' || command.type === 'undo') clearSlotFloat()
     setHintedTileId(null)
     const result = applyCommand(state, command, context)
     setState(result.state)
     const reactionEffects = result.effects.filter((effect): effect is ReactionEffect => effect.type === 'reaction')
     presentReactionEffects(reactionEffects)
+    if (command.type === 'select-tile') {
+      const trayIndex = result.state.tray.findIndex((entry) => entry.tileId === command.tileId)
+      const trayEntry = trayIndex >= 0 ? result.state.tray[trayIndex] : undefined
+      const item = trayEntry ? speciesById.get(trayEntry.speciesId) : undefined
+      if (trayEntry && item) showSlotFloat(trayIndex + 1, item.formula)
+    }
     const reactionEffect = reactionEffects[0]
 
     if (result.state.status === 'won') setFeedback('关卡完成 · 目标产物已达到标准。')
@@ -137,6 +246,8 @@ export function GameScreen() {
 
   const restartLevel = () => {
     clearReactionCue(true)
+    clearSlotFloat()
+    setTargetHighlightActive(false)
     setHintedTileId(null)
     setState(createGame(level))
     setFeedback('实验台已复位 · 选择未被遮挡的物质卡。')
@@ -144,11 +255,53 @@ export function GameScreen() {
 
   const chooseLevel = (index: number) => {
     clearReactionCue(true)
+    clearSlotFloat()
+    setTargetHighlightActive(false)
     setHintedTileId(null)
     setLevelIndex(index)
     setState(createGame(verticalSliceLevels[index]))
     setFeedback('实验台已切换 · 选择未被遮挡的物质卡。')
   }
+
+  const handleTileAction = (tileId: string) => {
+    const isSelectable = state.status === 'playing' && selectable.has(tileId)
+    if (!isSelectable) {
+      setHintedTileId(tileId)
+      return
+    }
+    setHintedTileId(null)
+    send({ type: 'select-tile', tileId })
+  }
+
+  const handleTileKeyDown = (event: React.KeyboardEvent<HTMLButtonElement>, tileId: string) => {
+    if (event.key === 'Enter' || event.key === ' ' || event.key === 'Spacebar') {
+      event.preventDefault()
+      handleTileAction(tileId)
+      return
+    }
+    const nextTileId = nextDirectionalTileId(tileId, event.key, visibleTiles)
+    if (!nextTileId) return
+    event.preventDefault()
+    tileRefs.current.get(nextTileId)?.focus()
+  }
+
+  useEffect(() => {
+    const handleShortcut = (event: KeyboardEvent) => {
+      const target = event.target as HTMLElement | null
+      if (target && (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA' || target.tagName === 'SELECT' || target.isContentEditable)) return
+      if (event.defaultPrevented || event.ctrlKey || event.metaKey || event.altKey || event.shiftKey) return
+      const key = event.key.toLowerCase()
+      if (key === 'u' && state.history.length && state.undoUsed < level.toolLimits.undo) {
+        event.preventDefault()
+        send({ type: 'undo' })
+      } else if (key === 'r') {
+        event.preventDefault()
+        restartLevel()
+      }
+    }
+    document.addEventListener('keydown', handleShortcut)
+    return () => document.removeEventListener('keydown', handleShortcut)
+  }, [level, state])
 
   return (
     <main className="game-shell" data-game-status={state.status}>
@@ -175,6 +328,7 @@ export function GameScreen() {
             >
               <span className="level-index">0{index + 1}</span>
               <span>选择第 {index + 1} 关</span>
+              {clearedLevelIdSet.has(item.id) && <span className="level-cleared">CLEARED</span>}
             </button>
           ))}
         </nav>
@@ -186,7 +340,17 @@ export function GameScreen() {
             <p>{level.objectiveTextZh}</p>
           </div>
           <div className="target-readout" aria-label={`目标进度 ${produced} / ${goalCount}`}>
-            <span className="target-formula">{target?.formula ?? '—'}</span>
+            {target ? (
+              <button
+                type="button"
+                className={targetHighlightActive ? 'target-formula target-formula--active' : 'target-formula'}
+                aria-pressed={targetHighlightActive}
+                aria-label={`目标产物 ${target.formula}，${targetHighlightActive ? '关闭' : '查看'}对应反应物`}
+                onClick={() => setTargetHighlightActive((active) => !active)}
+              >
+                {target.formula}
+              </button>
+            ) : <span className="target-formula">—</span>}
             <strong>{produced} / {goalCount}</strong>
             <span className="target-progress" aria-hidden="true">
               <span style={{ '--target-progress': `${progress}%` } as CSSProperties} />
@@ -202,7 +366,7 @@ export function GameScreen() {
           </div>
           <div className="board" aria-describedby="field-instruction">
             <div className="board-grid" aria-hidden="true" />
-            {level.board.filter((tile) => remaining.has(tile.tileId)).map((tile) => {
+            {visibleTiles.map((tile) => {
               const item = speciesById.get(tile.speciesId)
               if (!item) return null
               const isSelectable = state.status === 'playing' && selectable.has(tile.tileId)
@@ -222,9 +386,14 @@ export function GameScreen() {
                     'tile',
                     isSelectable ? 'tile--open' : 'tile--locked',
                     hintedBlockerIds.has(tile.tileId) ? 'tile--blocking' : '',
+                    targetHighlightActive && targetReactantSpeciesIds.has(tile.speciesId) ? 'tile--target-reactant' : '',
                   ].filter(Boolean).join(' ')}
                   style={style}
                   aria-disabled={isSelectable ? undefined : true}
+                  ref={(element) => {
+                    if (element) tileRefs.current.set(tile.tileId, element)
+                    else tileRefs.current.delete(tile.tileId)
+                  }}
                   onMouseEnter={() => setHintedTileId(isSelectable ? null : tile.tileId)}
                   onMouseLeave={(event) => {
                     if (event.currentTarget !== document.activeElement) {
@@ -233,14 +402,8 @@ export function GameScreen() {
                   }}
                   onFocus={() => setHintedTileId(isSelectable ? null : tile.tileId)}
                   onBlur={() => setHintedTileId((current) => current === tile.tileId ? null : current)}
-                  onClick={() => {
-                    if (!isSelectable) {
-                      setHintedTileId(tile.tileId)
-                      return
-                    }
-                    setHintedTileId(null)
-                    send({ type: 'select-tile', tileId: tile.tileId })
-                  }}
+                  onKeyDown={(event) => handleTileKeyDown(event, tile.tileId)}
+                  onClick={() => handleTileAction(tile.tileId)}
                   aria-label={`${item.formula}，${accessibleSpeciesName(item)}，${isSelectable ? '可取出' : state.status !== 'playing' ? '关卡已结束，剩余牌不可操作' : blockerIds.length ? '被其他卡牌遮挡' : '当前不可操作'}`}
                 >
                   <span className="tile-tag">{isSelectable ? 'OPEN' : 'LOCKED'}</span>
@@ -301,6 +464,11 @@ export function GameScreen() {
             <span>{state.tray.length} / {level.trayCapacity} SLOTS</span>
           </div>
           {awaitingCondition && <p className="panel-status panel-status--awaiting">AWAITING CONDITION</p>}
+          {slotFloat && (
+            <p className="slot-float" aria-hidden="true">
+              SLOT {String(slotFloat.slotNumber).padStart(2, '0')} ← {slotFloat.formula}
+            </p>
+          )}
           <div
             className="tray"
             style={{ '--tray-columns': level.trayCapacity } as CSSProperties}
