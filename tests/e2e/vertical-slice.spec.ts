@@ -1,11 +1,11 @@
 import { expect, test } from '@playwright/test'
 
-test('exposes all fifteen levels as flat navigation buttons', async ({ page }) => {
+test('exposes all twenty levels as flat navigation buttons', async ({ page }) => {
   await page.goto('/')
   const levelButtons = page.getByRole('button', { name: /选择第 \d+ 关/ })
-  await expect(levelButtons).toHaveCount(15)
-  await levelButtons.nth(14).click()
-  await expect(page.getByRole('heading', { name: '分子式蓝沉淀' })).toBeVisible()
+  await expect(levelButtons).toHaveCount(20)
+  await levelButtons.nth(19).click()
+  await expect(page.getByRole('heading', { name: '双沉淀终局' })).toBeVisible()
 })
 
 test('level 3 resolves two 1:2 reactions and completes', async ({ page }) => {

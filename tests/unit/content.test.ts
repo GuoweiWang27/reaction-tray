@@ -16,9 +16,11 @@ describe('content baseline', () => {
     expect(validateChemistry(species, reactions)).toEqual([])
   })
 
-  it('contains fifteen structurally valid canonical levels', () => {
-    expect(levels).toHaveLength(15)
-    expect(levels.map((level) => level.order)).toEqual([1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15])
+  it('contains twenty structurally valid canonical levels', () => {
+    expect(levels).toHaveLength(20)
+    expect(levels.map((level) => level.order)).toEqual([1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20])
+    expect([1, 2, 3, 4].map((chapter) => levels.filter((level) => level.chapter === chapter))).toHaveLength(4)
+    expect([1, 2, 3, 4].map((chapter) => levels.filter((level) => level.chapter === chapter).length)).toEqual([5, 5, 5, 5])
     expect(validateAllContent(species, reactions, conditions, levels)).toEqual([])
   })
 
@@ -38,8 +40,8 @@ describe('content baseline', () => {
   })
 
   it('stores the exact Chapter 3 condition counts', () => {
-    expect(levels).toHaveLength(15)
-    if (levels.length < 15) return
+    expect(levels).toHaveLength(20)
+    if (levels.length < 20) return
     expect(conditionCount(levels[10], 'mno2')).toBe(1)
     expect(conditionCount(levels[11], 'light')).toBe(2)
     expect(conditionCount(levels[12], 'heat')).toBe(2)

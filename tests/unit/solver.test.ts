@@ -67,13 +67,13 @@ describe.each(levels)('$id', (level) => {
 })
 
 describe('progress command solver', () => {
-  it('covers all fifteen canonical levels', () => {
-    expect(levels).toHaveLength(15)
+  it('covers all twenty canonical levels', () => {
+    expect(levels).toHaveLength(20)
   })
 
   it('finds the required Chapter 3 condition commands', () => {
-    expect(levels).toHaveLength(15)
-    if (levels.length < 15) return
+    expect(levels).toHaveLength(20)
+    if (levels.length < 20) return
     const solve = (levelIndex: number) => solveLevel({ level: levels[levelIndex], reactions, conditions }, { maxNodes: 200_000, timeoutMs: 3_000 })
     const catalyst = solve(10)
     const light = solve(11)

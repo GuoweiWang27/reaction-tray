@@ -2,7 +2,8 @@ import { describe, expect, it } from 'vitest'
 import { conditions } from '../../src/content/conditions'
 import { levels } from '../../src/content/levels'
 import { reactions } from '../../src/content/reactions'
-import { applyCommand, createGame, selectableTileIds, type EngineContext } from '../../src/game/engine'
+import { applyCommand, createGame, selectableTileIds, type EngineContext, type GameEffect } from '../../src/game/engine'
+import type { LevelDefinition } from '../../src/domain/types'
 
 const fixtureTile = (tileId: string, speciesId: string) => ({
   tileId,
@@ -79,6 +80,21 @@ const run = (state: ReturnType<typeof createGame>, commands: Array<{ type: 'sele
   let next = state
   for (const command of commands) next = applyCommand(next, command, context).state
   return next
+}
+
+const reactionIds = (effects: GameEffect[]) => effects.flatMap((effect) => effect.type === 'reaction' ? [effect.reactionId] : [])
+const replayStandard = (level: LevelDefinition) => {
+  const context: EngineContext = { level, reactions, conditions }
+  let state = createGame(level)
+  const effects: GameEffect[] = []
+  const effectsByStep: GameEffect[][] = []
+  for (const step of level.standardSolutionSteps) {
+    const result = applyCommand(state, step, context)
+    state = result.state
+    effects.push(...result.effects)
+    effectsByStep.push(result.effects)
+  }
+  return { state, effects, effectsByStep }
 }
 
 const context = (levelIndex: number): EngineContext => ({ level: levels[levelIndex], reactions, conditions })
@@ -212,8 +228,8 @@ describe('game engine', () => {
   })
 
   it('replays Chapter 3 persistent and one-shot condition lifecycles', () => {
-    expect(levels).toHaveLength(15)
-    if (levels.length < 15) return
+    expect(levels).toHaveLength(20)
+    if (levels.length < 20) return
 
     const catalystContext = context(10)
     let catalystState = createGame(catalystContext.level)
@@ -243,6 +259,58 @@ describe('game engine', () => {
     expect(heat.state.status).toBe('won')
     expect(heat.state.performed['reaction.sodium-bicarbonate-decomposition']).toBe(2)
     expect(heat.activeAfterActivation).toEqual([[], []])
+  })
+
+  it('replays all three Chapter 4 ordered chains with exact effects and history', () => {
+    expect(levels).toHaveLength(20)
+    if (levels.length < 20) return
+
+    const l18 = replayStandard(levels[17])
+    const l19 = replayStandard(levels[18])
+    const l20 = replayStandard(levels[19])
+
+    expect(reactionIds(l18.effects)).toEqual([
+      'reaction.limewater-carbon-dioxide',
+      'reaction.calcium-carbonate-hcl',
+    ])
+    expect(reactionIds(l18.effectsByStep.at(-1)!)).toEqual([
+      'reaction.limewater-carbon-dioxide',
+      'reaction.calcium-carbonate-hcl',
+    ])
+    expect(l18.state.status).toBe('won')
+
+    expect(l19.state.reactionHistory).toEqual([
+      'reaction.iron-hcl',
+      'reaction.iron-hcl',
+      'reaction.hydrogen-combustion',
+    ])
+    expect(l19.state.status).toBe('won')
+    expect(levels[18].trayCapacity).toBe(4)
+    const oxygenTileId = levels[18].board.find((tile) => tile.speciesId === 'species.oxygen')!.tileId
+    expect(levels[18].standardSolutionSteps.at(-2)).toEqual({ type: 'activate-condition', conditionId: 'ignite' })
+    expect(levels[18].standardSolutionSteps.at(-1)).toEqual({ type: 'select-tile', tileId: oxygenTileId })
+
+    expect(reactionIds(l20.effects)).toEqual([
+      'reaction.copper-sulfate-sodium-hydroxide',
+      'reaction.barium-sulfate-precipitation',
+    ])
+    expect(reactionIds(l20.effectsByStep.at(-1)!)).toEqual([
+      'reaction.copper-sulfate-sodium-hydroxide',
+      'reaction.barium-sulfate-precipitation',
+    ])
+    expect(l20.state.status).toBe('won')
+
+    const wrongOrderLevel = {
+      ...levels[18],
+      goals: [{
+        kind: 'sequence' as const,
+        steps: [
+          { reactionId: 'reaction.hydrogen-combustion', count: 1 },
+          { reactionId: 'reaction.iron-hcl', count: 2 },
+        ],
+      }],
+    }
+    expect(replayStandard(wrongOrderLevel).state.status).not.toBe('won')
   })
 
   it('wins only when an ordered sequence matches reaction history exactly', () => {
