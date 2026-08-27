@@ -10,33 +10,42 @@ interface GoalPanelProps {
 
 export function GoalPanel({ view, won, targetHighlightActive, onTargetClick }: GoalPanelProps) {
   const targetReadout = `${view.current} / ${view.target}`
+  const targetLabel = view.kind === 'produce'
+    ? `目标产物 ${view.targetFormula}，${targetHighlightActive ? '重新提示' : '查看'}对应反应物`
+    : view.kind === 'perform'
+      ? `目标反应 ${view.equationDisplay}，${targetHighlightActive ? '重新提示' : '查看'}对应反应物`
+      : `当前步骤 ${view.currentReactionId ?? '已完成'}，${targetHighlightActive ? '重新提示' : '查看'}对应反应物`
+  const targetButtonClassName = view.kind === 'produce'
+    ? 'target-formula'
+    : 'target-equation target-equation-button'
+  const targetActiveClassName = targetHighlightActive
+    ? view.kind === 'produce' ? 'target-formula--active' : 'target-equation-button--active'
+    : ''
   return (
-    <section className="target-panel" data-goal-kind={view.kind} aria-labelledby="target-heading">
+    <section
+      className="target-panel"
+      data-goal-kind={view.kind}
+      data-current-reaction-id={view.currentReactionId}
+      aria-labelledby="target-heading"
+    >
       <div className="target-copy">
         <p className="panel-kicker">TARGET OUTPUT / {view.kind.toUpperCase()}</p>
         <h2 id="target-heading">{view.titleZh}</h2>
         <p>{view.objectiveTextZh}</p>
       </div>
       <div className="target-readout" aria-label={`目标进度 ${targetReadout}`}>
-        {view.kind === 'produce' ? (
-          <button
-            type="button"
-            className={[
-              'target-formula',
-              targetHighlightActive ? 'target-formula--active' : '',
-              won ? 'target-formula--won' : '',
-            ].filter(Boolean).join(' ')}
-            aria-pressed={targetHighlightActive}
-            aria-label={`目标产物 ${view.targetFormula}，${targetHighlightActive ? '重新提示' : '查看'}对应反应物`}
-            onClick={onTargetClick}
-          >
-            {view.targetFormula}
-          </button>
-        ) : view.kind === 'perform' ? (
-          <span className="target-equation" aria-label={`目标反应 ${view.equationDisplay}`}>反应</span>
-        ) : (
-          <span className="target-equation" aria-label={`当前步骤 ${view.currentReactionId ?? '已完成'}`}>STEP</span>
-        )}
+        <button
+          type="button"
+          className={[targetButtonClassName, targetActiveClassName, won && view.kind === 'produce' ? 'target-formula--won' : '']
+            .filter(Boolean)
+            .join(' ')}
+          disabled={!view.currentReactionId}
+          aria-pressed={targetHighlightActive}
+          aria-label={targetLabel}
+          onClick={onTargetClick}
+        >
+          {view.kind === 'produce' ? view.targetFormula : view.kind === 'perform' ? '反应' : 'STEP'}
+        </button>
         <strong>{targetReadout}</strong>
         <span className="target-progress" aria-hidden="true">
           <span style={{ '--target-progress': `${view.progressPercent}%` } as CSSProperties} />

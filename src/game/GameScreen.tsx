@@ -153,12 +153,10 @@ export function GameScreen() {
     .filter((formula): formula is string => Boolean(formula))
   const goalView = useMemo(() => buildGoalView(level, state, reactions, species), [level, state])
   const targetReactantSpeciesIds = useMemo(() => {
-    if (goalView.kind !== 'produce') return new Set<string>()
-    const allowed = new Set(level.allowedReactions.map((entry) => entry.reactionId))
-    return new Set(reactions
-      .filter((reaction) => allowed.has(reaction.id) && reaction.products.some((product) => product.speciesId === goalView.targetSpeciesId))
-      .flatMap((reaction) => reaction.reactants.map((reactant) => reactant.speciesId)))
-  }, [goalView, level])
+    const allowedReactionIds = new Set(level.allowedReactions.map((entry) => entry.reactionId))
+    const currentReaction = reactions.find((reaction) => reaction.id === goalView.currentReactionId && allowedReactionIds.has(reaction.id))
+    return new Set(currentReaction?.reactants.map((reactant) => reactant.speciesId) ?? [])
+  }, [goalView.currentReactionId, level.allowedReactions])
   const latestReceipt = effectReceipts[0]
   const awaitingCondition = state.status === 'awaiting-condition'
   const hintCopy = hintedTileId

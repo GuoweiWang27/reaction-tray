@@ -284,7 +284,6 @@ button {
 
 .level-button--active:hover,
 .level-button--active:focus-visible {
-  border-color: var(--crimson);
   color: var(--crimson-deep);
   background: var(--crimson-pale);
 }
@@ -423,6 +422,33 @@ button.target-formula:focus-visible,
   font-size: 1rem;
   font-weight: 700;
   letter-spacing: 0.05em;
+}
+
+.target-equation-button {
+  padding: 0;
+  border: 0;
+  background: transparent;
+  cursor: pointer;
+}
+
+.target-equation-button:hover:not(:disabled),
+.target-equation-button:focus-visible:not(:disabled),
+.target-equation-button--active {
+  color: var(--crimson-deep);
+  text-decoration: underline;
+  text-decoration-thickness: 1px;
+  text-underline-offset: 4px;
+}
+
+.target-equation-button--active {
+  padding-inline: 4px;
+  border-radius: var(--radius-chip);
+  background: var(--sand-pale);
+}
+
+.target-equation-button:disabled {
+  color: var(--faint);
+  cursor: not-allowed;
 }
 
 .goal-detail {
@@ -617,7 +643,6 @@ button.target-formula:focus-visible,
   overflow: hidden;
   border: 1px solid var(--line-strong);
   border-radius: var(--radius-card);
-  color: var(--ink);
   background: var(--panel);
   box-shadow: var(--shadow-panel);
   text-align: left;

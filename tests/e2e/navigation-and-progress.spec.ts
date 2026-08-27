@@ -18,6 +18,24 @@ test('navigates four chapters, five levels, direct URLs, and invalid URLs', asyn
   await expect(page.getByRole('heading', { name: '第一滴水' })).toBeVisible()
 })
 
+test('links a sequence goal to only the current reaction reactants', async ({ page }) => {
+  await page.goto('/?level=18')
+
+  const targetButton = page.locator('[data-goal-kind="sequence"] .target-equation-button')
+  await expect(targetButton).toHaveCount(1)
+  await expect(page.locator('[data-goal-kind="sequence"]')).toHaveAttribute(
+    'data-current-reaction-id',
+    'reaction.limewater-carbon-dioxide',
+  )
+
+  await targetButton.click()
+
+  await expect(page.getByTestId('l18-p-03')).toHaveClass(/tile--target-reactant/)
+  await expect(page.getByTestId('l18-p-04')).toHaveClass(/tile--target-reactant/)
+  await expect(page.getByTestId('l18-p-01')).not.toHaveClass(/tile--target-reactant/)
+  await expect(page.getByTestId('l18-p-02')).not.toHaveClass(/tile--target-reactant/)
+})
+
 test('validates tile and condition hints and consumes only available hint uses', async ({ page }) => {
   await page.goto('/?level=1')
   await page.getByTestId('hint-button').click()
