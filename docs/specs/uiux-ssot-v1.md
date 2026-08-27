@@ -1,6 +1,6 @@
 # Reaction Tray — UI/UX 设计 SSOT（适配 CHEMAI101 风格）
 
-> 版本：v1.1 · 2026-08-27 · Codex 主审定稿
+> 版本：v1.2 · 2026-08-28 · Codex 主审定稿
 > 地位：本文件是 reaction-tray 视觉与交互改造的唯一权威源。任何样式/交互改动以此为准；冲突时修改本文件再改代码。
 > 参照系：CHEMAI101（`../chemai101/tailwind.config.cjs`、`App.tsx`、`HomeModule.tsx`）
 
@@ -14,7 +14,7 @@
 
 ### 0.1 文件权限与实施边界（硬性）
 
-- 本 SSOT 由主审在实施前提交；实施批次只能修改 `src/game/game.css`、`src/game/GameScreen.tsx`、`index.html`。
+- 本 SSOT 由主审在实施前提交；实施批次只能修改 `src/game/game.css`、`src/game/GameScreen.tsx`、`src/game/components/ChapterNavigator.tsx`、`index.html`。
 - 禁止修改 `src/game/engine.ts`、`src/game/solver.ts`、`src/content/*`、测试文件、构建配置和依赖清单；禁止新增运行时代码或资源文件。
 - 所有新增行为必须从 `GameScreen.tsx` 已取得的 `state`、`level.board`、`level.allowedReactions`、`reactions` 和 engine effects 派生，不复制或猜测化学规则。
 - 若需求看似需要越界，先使用现有只读数据完成；仍不可完成时停止该批并报告，不得自行扩大范围。
@@ -108,9 +108,13 @@
 - H1「反应槽」用 `--display-font`（Playfair Display），颜色 `--ink`，去掉 `letter-spacing: -0.08em`（中文不适用负字距）。
 - run-status 边框改 `--line`，底 `rgba(255,255,255,0.7)`。
 
-### 4.3 关卡选择器（.level-selector）
-- 当前垂直切片有 3 关；移除数量耦合，改为 `repeat(auto-fit, minmax(96px, 1fr))`，保证未来增加关卡时不改 CSS。
-- 按钮：白底 + `--line` 边框 + `--radius-card`；激活态 `--crimson-pale` 底 + `--crimson` 边框文字。
+### 4.3 章节与关卡索引（.chapter-navigator）
+- 20 关按四章展示；章节 tab 保持四等分，但视觉收敛为顶部的薄型“实验册分卷索引”，不与具体关卡争抢重量。
+- 当前章节的 5 个关卡必须固定为单行五联索引 `repeat(5, minmax(0, 1fr))`，所有按钮同宽同高；禁止 `auto-fit` 造成 3+2 的残缺栅格。
+- 每个关卡索引只显示两位关卡号、短标题和状态标记；删除可见文案中重复的“选择第 N 关”。完整“选择第 N 关 · 标题 · 已完成”保留在 `aria-label`。
+- 当前关用深红边/底与 `CURRENT` 状态；已完成关用沙金实心状态点或 `CLEARED` 标记；未完成关使用空心状态点。色彩之外必须同时有文字或形状差异。
+- 五联索引下增加一行当前关摘要，只承载“Lxx · 关卡标题”和最佳成绩；没有成绩时显示 `NOT CLEARED`，避免把成绩塞进按钮导致高度变化。
+- 360–480px 仍保持五联单行，不允许横向滚动；短标题最多两行并省略，当前关摘要提供完整标题。键盘焦点、`aria-pressed`、chapter tab 的 `role=tab` 和既有 testid 全部保留。
 
 ### 4.4 目标面板（.target-panel）
 - 左边条 4px 改 `--crimson`；面板白底 + `--shadow-panel` + `--radius-panel`。
@@ -122,6 +126,11 @@
 - tile--open：hover 边框 `--crimson` + `--shadow-lift` + translateY(-2px)（现有行为保留，换色即可）。
 - tile--locked：底 `--paper-warm`、文字 `--faint`、去掉 opacity 0.72（与浅色底叠加后过淡），改用 `filter: saturate(0.6)`。
 - 遮挡关系可视化（新交互，P1）：hover、focus 或点击锁定 tile 时，直接读取该 tile 的 `blockedByTileIds` 与 `state.remainingTileIds`，让仍在棋盘上的实际遮挡牌显示 `--sand` 虚线描边，并在教练条说明“先取走高亮牌”。不得改 engine。锁定 tile 使用 `aria-disabled="true"` 而不是原生 `disabled`，以便键盘聚焦；点击锁定牌只显示提示，不发送 engine command。
+- v1.2 牌面改为“标本标签卡”：顶部为低权重状态行，中部只突出化学式，底部把中文名与物态缩写收进同一条 metadata footer；四层信息不得再以相同字重纵向堆叠。
+- 可取牌状态文案使用小圆点 + `READY`，锁定牌使用不同形状 + `COVERED`；不再让六张牌都以高对比度 `OPEN` 抬头。`aria-label` 继续使用中文“可取出 / 被其他卡牌遮挡”。
+- 物态视觉缩写统一为 `AQ / S / L / G`，完整含义仍由物质名称和 `aria-label` 提供；物态标记采用沙金描边小章，不引入多色相位编码。
+- 被遮挡牌使用低对比纸张、轻微纹理与压低的 footer；仍允许识别化学式，但被上层卡遮住时不得有大段中文/英文从缝隙中抢占注意力。
+- 卡片位置、宽度、z-index、`blockedByTileIds`、点击/键盘行为和 tile testid 完全不变；布局只用 CSS，不在 JS 中测量 DOM。
 
 ### 4.6 反应提示（.reaction-cue / .effect-receipt）
 - cue 底色改 `--crimson-pale` / `--sand-pale`，描边对应深色；`cue-pop` 动画保留。
