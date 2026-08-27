@@ -53,11 +53,11 @@ export function GameScreen() {
   const latestReceipt = effectReceipts[0]
   const awaitingCondition = state.status === 'awaiting-condition'
   const hintCopy = hintedTileId
-    ? hintedBlockerFormulas.length > 0
-      ? `遮挡关系 · 先取走高亮牌：${hintedBlockerFormulas.join('、')}。`
-      : state.status === 'playing'
-        ? '当前牌没有可见遮挡关系。'
-        : '关卡已结束 · 剩余牌不可操作。'
+    ? state.status !== 'playing'
+      ? '关卡已结束，剩余牌不可操作。'
+      : hintedBlockerFormulas.length > 0
+        ? `遮挡关系 · 先取走高亮牌：${hintedBlockerFormulas.join('、')}。`
+        : '当前牌没有可见遮挡关系。'
     : null
   const coachCopy = level.order === 1 && state.status === 'playing'
     ? state.moveCount === 0
@@ -226,7 +226,11 @@ export function GameScreen() {
                   style={style}
                   aria-disabled={isSelectable ? undefined : true}
                   onMouseEnter={() => setHintedTileId(isSelectable ? null : tile.tileId)}
-                  onMouseLeave={() => setHintedTileId((current) => current === tile.tileId ? null : current)}
+                  onMouseLeave={(event) => {
+                    if (event.currentTarget !== document.activeElement) {
+                      setHintedTileId((current) => current === tile.tileId ? null : current)
+                    }
+                  }}
                   onFocus={() => setHintedTileId(isSelectable ? null : tile.tileId)}
                   onBlur={() => setHintedTileId((current) => current === tile.tileId ? null : current)}
                   onClick={() => {
@@ -237,7 +241,7 @@ export function GameScreen() {
                     setHintedTileId(null)
                     send({ type: 'select-tile', tileId: tile.tileId })
                   }}
-                  aria-label={`${item.formula}，${accessibleSpeciesName(item)}，${isSelectable ? '可取出' : blockerIds.length ? '被其他卡牌遮挡' : '当前不可操作'}`}
+                  aria-label={`${item.formula}，${accessibleSpeciesName(item)}，${isSelectable ? '可取出' : state.status !== 'playing' ? '关卡已结束，剩余牌不可操作' : blockerIds.length ? '被其他卡牌遮挡' : '当前不可操作'}`}
                 >
                   <span className="tile-tag">{isSelectable ? 'OPEN' : 'LOCKED'}</span>
                   <strong className="tile-formula">{item.formula}</strong>
