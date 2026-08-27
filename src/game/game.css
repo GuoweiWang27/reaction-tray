@@ -791,11 +791,12 @@ button.target-formula:focus-visible,
   display: flex;
   width: calc(var(--w) * 8.333% - 5px);
   min-width: 52px;
-  min-height: 68px;
+  height: 72px;
+  min-height: 72px;
   flex-direction: column;
   align-items: flex-start;
   justify-content: flex-start;
-  padding: 7px 6px 6px;
+  padding: 6px 1px 5px;
   overflow: hidden;
   border: 1px solid var(--line-strong);
   border-radius: var(--radius-card);
@@ -845,47 +846,114 @@ button.target-formula:focus-visible,
   animation: target-reactant-pulse 900ms ease-in-out both;
 }
 
-.tile-tag {
-  align-self: stretch;
-  margin-bottom: 6px;
-  padding-bottom: 4px;
-  border-bottom: 1px solid currentColor;
+.tile-status {
+  display: inline-flex;
+  min-width: 0;
+  align-items: center;
+  gap: 2px;
+  margin-bottom: 4px;
+  padding: 0;
+  border: 0;
   font-size: var(--text-micro);
   font-weight: 700;
-  opacity: 0.8;
+  letter-spacing: -0.08em;
+  line-height: 1.2;
+  opacity: 0.72;
+  white-space: nowrap;
 }
 
-.tile--open .tile-tag {
+.tile-status-marker {
+  width: 5px;
+  height: 5px;
+  flex: 0 0 auto;
+  border: 1px solid currentColor;
+  border-radius: var(--radius-chip);
+}
+
+.tile--open .tile-status {
   color: var(--crimson);
 }
 
-.tile--locked .tile-tag {
+.tile--open .tile-status-marker {
+  background: var(--crimson-pale);
+}
+
+.tile--locked .tile-status {
   color: var(--faint);
 }
 
+.tile--locked .tile-status-marker {
+  border-radius: 1px;
+  background: transparent;
+  transform: rotate(45deg);
+}
+
 .tile-formula {
-  font-size: clamp(1rem, 4vw, 1.24rem);
+  display: block;
+  align-self: center;
+  min-width: 0;
+  max-width: 100%;
+  overflow: hidden;
+  font-size: clamp(0.875rem, 3.4vw, 1.05rem);
   font-weight: 600;
+  line-height: normal;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.tile-meta {
+  display: flex;
+  width: 100%;
+  min-width: 0;
+  align-items: center;
+  justify-content: space-between;
+  gap: 3px;
+  margin-top: auto;
+  padding-top: 4px;
+  border-top: 1px solid var(--line);
+  font-size: var(--text-micro);
   line-height: 1;
 }
 
 .tile-name {
-  width: 100%;
-  margin-top: 4px;
+  min-width: 0;
+  flex: 1 1 auto;
   overflow: hidden;
   font-family: var(--body-font);
-  font-size: 0.8125rem;
+  font-size: var(--text-micro);
   font-weight: 600;
-  line-height: 1.1;
+  line-height: 1.2;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 
 .tile-phase {
-  margin-top: auto;
+  display: inline-block;
+  flex: 0 0 auto;
+  margin: 0;
+  padding: 2px 2px 1px;
+  border: 1px solid var(--sand);
+  border-radius: var(--radius-chip);
+  color: var(--sand-dark);
   font-size: var(--text-micro);
+  letter-spacing: 0.02em;
   line-height: 1;
-  opacity: 0.62;
+  opacity: 1;
+  text-decoration: none;
+}
+
+.tile--locked .tile-formula {
+  color: var(--muted);
+}
+
+.tile--locked .tile-meta {
+  color: var(--faint);
+  opacity: 0.58;
+}
+
+.tile--locked .tile-phase {
+  border-color: var(--faint);
+  color: var(--faint);
 }
 
 .reaction-cue-layer {
@@ -1109,13 +1177,18 @@ button.target-formula:focus-visible,
   border-radius: var(--radius-chip);
 }
 
-.legend-dot--open {
+.legend-dot--open,
+.legend-dot--ready {
   margin-left: 0;
   background: var(--crimson);
 }
 
-.legend-dot--locked {
-  background: var(--faint);
+.legend-dot--locked,
+.legend-dot--covered {
+  border: 1px solid var(--faint);
+  border-radius: 1px;
+  background: transparent;
+  transform: rotate(45deg);
 }
 
 .tray-panel {
@@ -1510,11 +1583,11 @@ button:focus-visible {
 
   .tile {
     min-width: 49px;
-    padding-inline: 5px;
+    padding-inline: 1px;
   }
 
   .tile-name {
-    font-size: 0.8125rem;
+    font-size: var(--text-micro);
   }
 
   .reaction-cue-layer {

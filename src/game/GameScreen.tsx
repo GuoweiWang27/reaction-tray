@@ -17,6 +17,7 @@ const requestedLevel = Number(new URLSearchParams(window.location.search).get('l
 const initialLevel = Number.isInteger(requestedLevel) && requestedLevel >= 1 && requestedLevel <= levels.length ? requestedLevel - 1 : 0
 
 const phaseLabel = (phase: string): string => ({ aq: 'AQUEOUS', s: 'SOLID', l: 'LIQUID', g: 'GAS' }[phase] ?? 'SPECIMEN')
+const phaseShortLabel = (phase: string): string => ({ aq: 'AQ', s: 'S', l: 'L', g: 'G' }[phase] ?? '?')
 const accessibleSpeciesName = (item: (typeof species)[number]): string => item.kind === 'ion' ? `水溶液中的${item.nameZh}` : item.nameZh
 type ReactionEffect = Extract<GameEffect, { type: 'reaction' }>
 type ReactionCueKind = 'precipitate' | 'product' | 'gas' | 'light' | 'metal' | 'color-change'
@@ -630,10 +631,17 @@ export function GameScreen() {
                   onClick={() => handleTileAction(tile.tileId)}
                   aria-label={`${item.formula}，${accessibleSpeciesName(item)}，${isSelectable ? '可取出' : state.status !== 'playing' ? '关卡已结束，剩余牌不可操作' : blockerIds.length ? '被其他卡牌遮挡' : '当前不可操作'}`}
                 >
-                  <span className="tile-tag">{isSelectable ? 'OPEN' : 'LOCKED'}</span>
+                  <span className="tile-tag tile-status">
+                    <span className="tile-status-marker" aria-hidden="true" />
+                    <span>{isSelectable ? 'READY' : 'COVERED'}</span>
+                  </span>
                   <strong className="tile-formula">{item.formula}</strong>
-                  <span className="tile-name">{item.nameZh}</span>
-                  <span className="tile-phase">{phaseLabel(item.defaultPhase)}</span>
+                  <span className="tile-meta">
+                    <span className="tile-name">{item.nameZh}</span>
+                    <abbr className="tile-phase" title={`物态：${phaseLabel(item.defaultPhase)}`} aria-label={`物态：${phaseLabel(item.defaultPhase)}`}>
+                      {phaseShortLabel(item.defaultPhase)}
+                    </abbr>
+                  </span>
                 </button>
               )
             })}
@@ -677,8 +685,8 @@ export function GameScreen() {
             </div>
           )}
           <p className="field-instruction" id="field-instruction">
-            <span className="legend-dot legend-dot--open" aria-hidden="true" /> OPEN 可取出
-            <span className="legend-dot legend-dot--locked" aria-hidden="true" /> LOCKED 被遮挡
+            <span className="legend-dot legend-dot--open legend-dot--ready" aria-hidden="true" /> READY 可取出
+            <span className="legend-dot legend-dot--locked legend-dot--covered" aria-hidden="true" /> COVERED 被遮挡
           </p>
         </section>
 
