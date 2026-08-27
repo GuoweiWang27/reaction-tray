@@ -156,7 +156,10 @@ export function GameScreen() {
   const mounted = useRef(true)
   const selectable = new Set(selectableTileIds(state, level))
   const remaining = new Set(state.remainingTileIds)
-  const visibleTiles = level.board.filter((tile) => remaining.has(tile.tileId))
+  const visibleTiles = useMemo(
+    () => level.board.filter((tile) => state.remainingTileIds.includes(tile.tileId)),
+    [level, state.remainingTileIds],
+  )
   const hintedTile = hintedTileId ? level.board.find((tile) => tile.tileId === hintedTileId) : undefined
   const hintedBlockerIds = new Set(hintedTile?.blockedByTileIds.filter((id) => remaining.has(id)) ?? [])
   const hintedBlockerFormulas = [...hintedBlockerIds]
@@ -377,7 +380,7 @@ export function GameScreen() {
       .map((tileId) => tileRefs.current.get(tileId))
       .find((element): element is HTMLButtonElement => Boolean(element && !element.disabled && element.tabIndex >= 0))
     focusable?.focus()
-  }, [level.id, state.remainingTileIds])
+  }, [visibleTiles])
 
   const send = (command: GameCommand, restoreKeyboardFocus = false) => {
     clearReactionCue(command.type === 'undo')
@@ -471,7 +474,7 @@ export function GameScreen() {
     }
     document.addEventListener('keydown', handleShortcut)
     return () => document.removeEventListener('keydown', handleShortcut)
-  }, [level, state])
+  })
 
   return (
     <main className="game-shell" data-game-status={state.status}>
