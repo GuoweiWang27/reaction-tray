@@ -42,6 +42,7 @@ export function GameScreen() {
   const target = goal?.kind === 'produce' ? speciesById.get(goal.targetSpeciesId) : undefined
   const produced = goal?.kind === 'produce' ? (state.produced[goal.targetSpeciesId] ?? 0) : 0
   const goalCount = goal?.kind === 'produce' ? goal.count : 0
+  const progress = goalCount > 0 ? Math.min(100, (produced / goalCount) * 100) : 0
   const statusLabel = state.status === 'won'
     ? 'COMPLETE'
     : state.status === 'lost'
@@ -151,6 +152,9 @@ export function GameScreen() {
           <div className="target-readout" aria-label={`目标进度 ${produced} / ${goalCount}`}>
             <span className="target-formula">{target?.formula ?? '—'}</span>
             <strong>{produced} / {goalCount}</strong>
+            <span className="target-progress" aria-hidden="true">
+              <span style={{ '--target-progress': `${progress}%` } as CSSProperties} />
+            </span>
             <span className="readout-caption">OUTPUT COUNT</span>
           </div>
         </section>
