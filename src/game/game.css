@@ -119,6 +119,48 @@ body {
   white-space: nowrap;
 }
 
+.header-actions {
+  display: grid;
+  justify-items: end;
+  gap: 6px;
+}
+
+.sound-toggle {
+  display: inline-flex;
+  min-height: 32px;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 8px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-chip);
+  color: var(--muted);
+  background: rgba(255, 255, 255, 0.7);
+  font-family: var(--mono-font);
+  font-size: var(--text-micro);
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  cursor: pointer;
+  transition: border-color 160ms ease, background-color 160ms ease, color 160ms ease, transform 160ms ease;
+}
+
+.sound-toggle:hover,
+.sound-toggle:focus-visible {
+  border-color: var(--sand);
+  color: var(--sand-dark);
+  transform: translateY(-1px);
+}
+
+.sound-toggle--active {
+  border-color: var(--sand-dark);
+  color: var(--sand-dark);
+  background: var(--sand-pale);
+}
+
+.sound-toggle-indicator {
+  font-size: var(--text-micro);
+  line-height: 1;
+}
+
 .status-led {
   width: 6px;
   height: 6px;
@@ -294,6 +336,10 @@ button.target-formula:focus-visible,
   padding-inline: 4px;
   border-radius: var(--radius-chip);
   background: var(--sand-pale);
+}
+
+.target-formula--won {
+  animation: slot-fill 220ms ease-out both;
 }
 
 .target-readout strong {
@@ -852,10 +898,23 @@ button.target-formula:focus-visible,
   font-weight: 600;
 }
 
+.outcome-actions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 6px;
+}
+
 .outcome--won button {
   border-color: var(--crimson);
   color: var(--crimson-deep);
   background: var(--crimson-pale);
+}
+
+.outcome--won .outcome-share {
+  border-color: var(--sand);
+  color: var(--sand-dark);
+  background: var(--sand-pale);
 }
 
 .console-footer {
@@ -977,6 +1036,11 @@ button:focus-visible {
     animation: none;
     border-color: var(--sand-dark);
     box-shadow: 0 0 0 2px var(--sand-pale), var(--shadow-panel);
+  }
+
+  .target-formula--won {
+    animation: none;
+    transform: none;
   }
 
   .tray-panel--awaiting,

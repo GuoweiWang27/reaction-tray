@@ -18,8 +18,17 @@ type ReactionCue = { id: number; kind: ReactionCueKind; label: string; formula: 
 type EffectReceipt = ReactionCue & { effectCount: number; total: number }
 type DirectionKey = 'ArrowLeft' | 'ArrowRight' | 'ArrowUp' | 'ArrowDown'
 type TileActionSource = 'pointer' | 'keyboard'
+type SoundKind = 'select' | 'reaction' | 'win'
+type SoundProfile = { oscillator: OscillatorType; frequencies: number[]; duration: number; gain: number }
 
 const clearedLevelsStorageKey = 'reaction-tray.cleared-levels.v1'
+const soundEnabledStorageKey = 'reaction-tray.sound-enabled.v1'
+
+const soundProfiles: Record<SoundKind, SoundProfile> = {
+  select: { oscillator: 'sine', frequencies: [440, 660], duration: 0.08, gain: 0.045 },
+  reaction: { oscillator: 'triangle', frequencies: [262, 392, 523], duration: 0.18, gain: 0.055 },
+  win: { oscillator: 'sine', frequencies: [523, 659, 784], duration: 0.36, gain: 0.065 },
+}
 
 const readClearedLevelIds = (): string[] => {
   try {
@@ -41,6 +50,14 @@ const mergeClearedLevelId = (levelId: string): string[] => {
     // Keep the in-memory record when browser storage is unavailable.
   }
   return merged
+}
+
+const readSoundEnabled = (): boolean => {
+  try {
+    return JSON.parse(window.localStorage.getItem(soundEnabledStorageKey) ?? 'false') === true
+  } catch {
+    return false
+  }
 }
 
 const directionKeys = new Set<DirectionKey>(['ArrowLeft', 'ArrowRight', 'ArrowUp', 'ArrowDown'])
@@ -124,6 +141,7 @@ export function GameScreen() {
   const [effectReceipts, setEffectReceipts] = useState<EffectReceipt[]>([])
   const [hintedTileId, setHintedTileId] = useState<string | null>(null)
   const [clearedLevelIds, setClearedLevelIds] = useState(readClearedLevelIds)
+  const [soundEnabled, setSoundEnabled] = useState(readSoundEnabled)
   const [targetHighlightActive, setTargetHighlightActive] = useState(false)
   const [targetHighlightCycle, setTargetHighlightCycle] = useState(0)
   const [slotFloat, setSlotFloat] = useState<{ slotNumber: number; formula: string } | null>(null)
@@ -134,6 +152,8 @@ export function GameScreen() {
   const previousStatus = useRef(state.status)
   const tileRefs = useRef(new Map<string, HTMLButtonElement>())
   const pendingKeyboardFocus = useRef<{ preferredTileId: string | null } | null>(null)
+  const audioContext = useRef<AudioContext | null>(null)
+  const mounted = useRef(true)
   const selectable = new Set(selectableTileIds(state, level))
   const remaining = new Set(state.remainingTileIds)
   const visibleTiles = level.board.filter((tile) => remaining.has(tile.tileId))
@@ -255,6 +275,80 @@ export function GameScreen() {
     }, reducedMotion ? 80 : 900)
   }
 
+  const createAudioContext = (): AudioContext | null => {
+    if (!soundEnabled || audioContext.current) return audioContext.current
+    try {
+      const audioWindow = window as typeof window & { webkitAudioContext?: typeof AudioContext }
+      const AudioContextConstructor = window.AudioContext ?? audioWindow.webkitAudioContext
+      if (!AudioContextConstructor) return null
+      audioContext.current = new AudioContextConstructor()
+      return audioContext.current
+    } catch {
+      return null
+    }
+  }
+
+  const playSound = (kind: SoundKind) => {
+    if (!soundEnabled) return
+    const context = createAudioContext()
+    if (!context) return
+    try {
+      const profile = soundProfiles[kind]
+      const oscillator = context.createOscillator()
+      const gain = context.createGain()
+      const now = context.currentTime
+      const step = profile.duration / profile.frequencies.length
+      oscillator.type = profile.oscillator
+      profile.frequencies.forEach((frequency, index) => oscillator.frequency.setValueAtTime(frequency, now + index * step))
+      gain.gain.setValueAtTime(0.0001, now)
+      gain.gain.exponentialRampToValueAtTime(profile.gain, now + 0.012)
+      gain.gain.exponentialRampToValueAtTime(0.0001, now + profile.duration)
+      oscillator.connect(gain)
+      gain.connect(context.destination)
+      oscillator.start(now)
+      oscillator.stop(now + profile.duration + 0.02)
+      void context.resume().catch(() => undefined)
+    } catch {
+      // Audio failure is non-blocking; the game remains usable without sound.
+    }
+  }
+
+  const disposeAudioContext = () => {
+    const context = audioContext.current
+    audioContext.current = null
+    if (!context) return
+    try {
+      void context.close().catch(() => undefined)
+    } catch {
+      // Browser audio cleanup is best effort.
+    }
+  }
+
+  const toggleSound = () => {
+    const next = !soundEnabled
+    setSoundEnabled(next)
+    try {
+      window.localStorage.setItem(soundEnabledStorageKey, JSON.stringify(next))
+    } catch {
+      // Keep the in-memory preference when browser storage is unavailable.
+    }
+    if (!next) disposeAudioContext()
+  }
+
+  const copyResult = async () => {
+    const resultText = `REACTION TRAY L${level.order} · ${state.moveCount} MOVES · COMPLETE`
+    if (typeof navigator.clipboard?.writeText !== 'function') {
+      if (mounted.current) setFeedback('复制失败，请手动记录。')
+      return
+    }
+    try {
+      await navigator.clipboard.writeText(resultText)
+      if (mounted.current) setFeedback('成绩已复制。')
+    } catch {
+      if (mounted.current) setFeedback('复制失败，请手动记录。')
+    }
+  }
+
   useEffect(() => {
     const previous = previousStatus.current
     previousStatus.current = state.status
@@ -263,10 +357,15 @@ export function GameScreen() {
     }
   }, [level.id, state.status])
 
-  useEffect(() => () => {
-    if (cueTimer.current !== null) window.clearTimeout(cueTimer.current)
-    if (slotFloatTimer.current !== null) window.clearTimeout(slotFloatTimer.current)
-    if (targetHighlightTimer.current !== null) window.clearTimeout(targetHighlightTimer.current)
+  useEffect(() => {
+    mounted.current = true
+    return () => {
+      mounted.current = false
+      if (cueTimer.current !== null) window.clearTimeout(cueTimer.current)
+      if (slotFloatTimer.current !== null) window.clearTimeout(slotFloatTimer.current)
+      if (targetHighlightTimer.current !== null) window.clearTimeout(targetHighlightTimer.current)
+      disposeAudioContext()
+    }
   }, [])
 
   useEffect(() => {
@@ -298,6 +397,12 @@ export function GameScreen() {
       if (trayEntry && item) showSlotFloat(trayIndex + 1, item.formula)
     }
     const reactionEffect = reactionEffects[0]
+    const acceptedSelection = command.type === 'select-tile' && result.state.moveCount > state.moveCount
+    if (acceptedSelection) {
+      if (result.state.status === 'won') playSound('win')
+      else if (reactionEffects.length > 0) playSound('reaction')
+      else playSound('select')
+    }
 
     if (result.state.status === 'won') setFeedback('关卡完成 · 目标产物已达到标准。')
     else if (result.state.status === 'lost') setFeedback(`关卡失败 · ${getLossFeedback(result.state)}`)
@@ -376,9 +481,22 @@ export function GameScreen() {
             <p className="brand-mark">REACTION TRAY <span>/</span> FIELD UNIT</p>
             <h1>反应槽</h1>
           </div>
-          <div className="run-status" aria-label={`当前状态 ${statusLabel}`}>
-            <span className="status-led" aria-hidden="true" />
-            <span>{statusLabel}</span>
+          <div className="header-actions">
+            <div className="run-status" aria-label={`当前状态 ${statusLabel}`}>
+              <span className="status-led" aria-hidden="true" />
+              <span>{statusLabel}</span>
+            </div>
+            <button
+              type="button"
+              className={soundEnabled ? 'sound-toggle sound-toggle--active' : 'sound-toggle'}
+              data-testid="sound-toggle"
+              aria-pressed={soundEnabled}
+              aria-label={soundEnabled ? '音效已开启，点击关闭' : '音效已关闭，点击开启'}
+              onClick={toggleSound}
+            >
+              <span className="sound-toggle-indicator" aria-hidden="true">{soundEnabled ? '●' : '○'}</span>
+              <span>{soundEnabled ? 'SOUND ON' : 'SOUND OFF'}</span>
+            </button>
           </div>
         </header>
 
@@ -408,7 +526,11 @@ export function GameScreen() {
             {target ? (
               <button
                 type="button"
-                className={targetHighlightActive ? 'target-formula target-formula--active' : 'target-formula'}
+                className={[
+                  'target-formula',
+                  targetHighlightActive ? 'target-formula--active' : '',
+                  state.status === 'won' ? 'target-formula--won' : '',
+                ].filter(Boolean).join(' ')}
                 aria-pressed={targetHighlightActive}
                 aria-label={`目标产物 ${target.formula}，${targetHighlightActive ? '重新提示' : '查看'}对应反应物`}
                 onClick={triggerTargetHighlight}
@@ -605,7 +727,12 @@ export function GameScreen() {
               <span className="outcome-kicker">{state.status === 'won' ? 'RUN COMPLETE' : 'RUN INTERRUPTED'}</span>
               <strong>{state.status === 'won' ? '样本链已完成' : '反应槽已封存'}</strong>
             </div>
-            <button type="button" onClick={restartLevel}>{state.status === 'won' ? '再做一次' : '重新开始'}</button>
+            <div className="outcome-actions">
+              {state.status === 'won' && (
+                <button type="button" className="outcome-share" data-testid="share-result" onClick={copyResult}>复制成绩</button>
+              )}
+              <button type="button" onClick={restartLevel}>{state.status === 'won' ? '再做一次' : '重新开始'}</button>
+            </div>
           </section>
         )}
 
