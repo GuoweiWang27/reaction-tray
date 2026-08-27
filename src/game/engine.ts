@@ -1,7 +1,8 @@
-import type { ConditionDefinition, ConditionId, LevelDefinition, ReactionDefinition } from '../domain/types'
+import type { ConditionDefinition, ConditionId, GameCommand, LevelDefinition, LevelGoal, ReactionDefinition } from '../domain/types'
+
+export type { GameCommand } from '../domain/types'
 
 export type GameStatus = 'playing' | 'awaiting-condition' | 'won' | 'lost'
-export type GameCommand = { type: 'select-tile'; tileId: string } | { type: 'activate-condition'; conditionId: ConditionId } | { type: 'undo' }
 export type GameEffect = {
   type: 'reaction'
   reactionId: string
@@ -10,7 +11,7 @@ export type GameEffect = {
   productSpeciesIds: string[]
 } | { type: 'restored' }
 export type TrayEntry = { tileId: string; speciesId: string }
-export interface GameSnapshot { remainingTileIds: string[]; tray: TrayEntry[]; produced: Record<string, number>; performed: Record<string, number>; activeConditionIds: ConditionId[]; moveCount: number; status: GameStatus; undoUsed: number }
+export interface GameSnapshot { remainingTileIds: string[]; tray: TrayEntry[]; produced: Record<string, number>; performed: Record<string, number>; reactionHistory: string[]; activeConditionIds: ConditionId[]; moveCount: number; status: GameStatus; undoUsed: number; hintUsed: number }
 export interface GameState extends GameSnapshot { history: GameSnapshot[] }
 export interface EngineContext { level: LevelDefinition; reactions: ReactionDefinition[]; conditions: ConditionDefinition[] }
 
@@ -18,7 +19,7 @@ const snapshot = ({ history: _history, ...state }: GameState): GameSnapshot => s
 const withHistory = (state: GameSnapshot, history: GameSnapshot[]): GameState => ({ ...state, history })
 
 export function createGame(level: LevelDefinition): GameState {
-  return { remainingTileIds: level.board.map((tile) => tile.tileId), tray: [], produced: {}, performed: {}, activeConditionIds: [], moveCount: 0, status: 'playing', undoUsed: 0, history: [] }
+  return { remainingTileIds: level.board.map((tile) => tile.tileId), tray: [], produced: {}, performed: {}, reactionHistory: [], activeConditionIds: [], moveCount: 0, status: 'playing', undoUsed: 0, hintUsed: 0, history: [] }
 }
 
 export function selectableTileIds(state: GameState, level: LevelDefinition): string[] {
@@ -51,11 +52,20 @@ function consume(tray: TrayEntry[], reaction: ReactionDefinition): TrayEntry[] {
   return next
 }
 
+export function expandedSequence(goal: Extract<LevelGoal, { kind: 'sequence' }>): string[] {
+  return goal.steps.flatMap((step) => Array.from({ length: step.count }, () => step.reactionId))
+}
+
+function sequenceMet(history: string[], goal: Extract<LevelGoal, { kind: 'sequence' }>): boolean {
+  const expected = expandedSequence(goal)
+  return expected.length === history.length && expected.every((reactionId, index) => history[index] === reactionId)
+}
+
 function goalsMet(state: GameSnapshot, level: LevelDefinition): boolean {
   return level.goals.every((goal) => {
     if (goal.kind === 'produce') return (state.produced[goal.targetSpeciesId] ?? 0) >= goal.count
     if (goal.kind === 'perform-reaction') return (state.performed[goal.reactionId] ?? 0) >= goal.count
-    return false
+    return sequenceMet(state.reactionHistory, goal)
   })
 }
 
@@ -76,6 +86,7 @@ function settle(input: GameSnapshot, context: EngineContext): { state: GameSnaps
   for (let reaction = eligible(state, context); reaction; reaction = eligible(state, context)) {
     state.tray = consume(state.tray, reaction)
     state.performed[reaction.id] = (state.performed[reaction.id] ?? 0) + 1
+    state.reactionHistory.push(reaction.id)
     for (const product of reaction.products) {
       state.produced[product.speciesId] = (state.produced[product.speciesId] ?? 0) + product.coefficient
       if (context.level.intermediateProductSpeciesIds.includes(product.speciesId)) for (let index = 0; index < product.coefficient; index += 1) state.tray.push({ tileId: `product.${reaction.id}.${state.performed[reaction.id]}.${index}`, speciesId: product.speciesId })
@@ -101,7 +112,11 @@ export function applyCommand(current: GameState, command: GameCommand, context: 
   if (command.type === 'undo') {
     if (!current.history.length || current.undoUsed >= context.level.toolLimits.undo) return { state: current, effects: [] }
     const restored = current.history.at(-1)!
-    return { state: withHistory({ ...restored, undoUsed: current.undoUsed + 1 }, current.history.slice(0, -1)), effects: [{ type: 'restored' }] }
+    return { state: withHistory({ ...restored, undoUsed: current.undoUsed + 1, hintUsed: current.hintUsed }, current.history.slice(0, -1)), effects: [{ type: 'restored' }] }
+  }
+  if (command.type === 'use-hint') {
+    if ((current.status !== 'playing' && current.status !== 'awaiting-condition') || current.hintUsed >= context.level.toolLimits.hint) return { state: current, effects: [] }
+    return { state: { ...current, hintUsed: current.hintUsed + 1 }, effects: [] }
   }
   const before = snapshot(current)
   let next = structuredClone(before)
@@ -114,10 +129,14 @@ export function applyCommand(current: GameState, command: GameCommand, context: 
   } else {
     if (current.status !== 'playing' && current.status !== 'awaiting-condition') return { state: current, effects: [] }
     if (!context.level.availableConditionIds.includes(command.conditionId)) return { state: current, effects: [] }
+    if (current.activeConditionIds.includes(command.conditionId)) return { state: current, effects: [] }
     const condition = context.conditions.find((item) => item.id === command.conditionId)!
-    next.activeConditionIds = condition.category === 'energy'
+    const activeConditionIds = condition.category === 'energy'
       ? [...next.activeConditionIds.filter((id) => context.conditions.find((item) => item.id === id)?.category !== 'energy'), command.conditionId]
       : [...new Set([...next.activeConditionIds, command.conditionId])]
+    if (activeConditionIds.length === current.activeConditionIds.length && activeConditionIds.every((id, index) => id === current.activeConditionIds[index])) return { state: current, effects: [] }
+    next.activeConditionIds = activeConditionIds
+    next.moveCount += 1
   }
   const settled = settle(next, context)
   return { state: withHistory(settled.state, [...current.history, before]), effects: settled.effects }

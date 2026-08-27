@@ -2,6 +2,13 @@ export type Phase = 'aq' | 's' | 'l' | 'g' | 'unknown'
 export type SpeciesKind = 'ion' | 'element' | 'compound'
 export type ConditionId = 'ignite' | 'heat' | 'light' | 'mno2'
 
+export type ProgressCommand =
+  | { type: 'select-tile'; tileId: string }
+  | { type: 'activate-condition'; conditionId: ConditionId }
+
+export type GameCommand = ProgressCommand | { type: 'undo' } | { type: 'use-hint' }
+export type LevelSolutionStep = ProgressCommand
+
 export interface ReviewMetadata {
   status: 'pending' | 'approved'
   version: string
@@ -90,7 +97,7 @@ export interface LevelDefinition {
   goals: LevelGoal[]
   intermediateProductSpeciesIds: string[]
   board: BoardTileDefinition[]
-  standardSolutionTileIds: string[]
+  standardSolutionSteps: LevelSolutionStep[]
   toolLimits: { undo: number; shuffle: number; hint: number }
   starRules: { twoStarMaxTools: number; threeStarMaxTools: number; threeStarMaxMoves: number }
   chemistryReview: ReviewMetadata

@@ -44,6 +44,20 @@ export function validateLevels(
   const reactionIds = new Set(reactions.map((item) => item.id))
   const conditionIds = new Set(conditions.map((item) => item.id))
 
+  for (const duplicate of findDuplicates(levels.map((item) => item.id))) errors.push(`duplicate level id ${duplicate}`)
+  for (const duplicate of findDuplicates(levels.map((item) => String(item.order)))) errors.push(`duplicate level order ${duplicate}`)
+  const orderedLevels = [...levels].sort((left, right) => left.order - right.order)
+  orderedLevels.forEach((level, index) => {
+    if (level.order !== index + 1) errors.push(`${level.id}: level order must be contiguous (expected ${index + 1}, found ${level.order})`)
+  })
+  if (levels.length > 3) {
+    const maxChapter = Math.max(...levels.map((level) => level.chapter))
+    for (let chapter = 1; chapter <= maxChapter; chapter += 1) {
+      const count = levels.filter((level) => level.chapter === chapter).length
+      if (count !== 5) errors.push(`chapter ${chapter} must contain exactly five levels (found ${count})`)
+    }
+  }
+
   for (const level of levels) {
     const tileById = new Map(level.board.map((item) => [item.tileId, item]))
     for (const duplicate of findDuplicates(level.board.map((item) => item.tileId))) errors.push(`${level.id}: duplicate tile ${duplicate}`)
@@ -57,6 +71,7 @@ export function validateLevels(
       }
     }
     for (const entry of level.allowedReactions) if (!reactionIds.has(entry.reactionId)) errors.push(`${level.id}: missing reaction ${entry.reactionId}`)
+    if (new Set(level.allowedReactions.map((entry) => entry.priority)).size !== level.allowedReactions.length) errors.push(`${level.id}: allowed reaction priorities must be unique`)
     for (const conditionId of level.availableConditionIds) if (!conditionIds.has(conditionId)) errors.push(`${level.id}: missing condition ${conditionId}`)
     for (const speciesId of level.intermediateProductSpeciesIds) if (!speciesIds.has(speciesId)) errors.push(`${level.id}: missing intermediate ${speciesId}`)
     for (const goal of level.goals) {
@@ -66,16 +81,21 @@ export function validateLevels(
     }
 
     const removed = new Set<string>()
-    for (const tileId of level.standardSolutionTileIds) {
-      const tile = tileById.get(tileId)
-      if (!tile) {
-        errors.push(`${level.id}: standard solution references missing tile ${tileId}`)
+    for (const step of level.standardSolutionSteps) {
+      if (step.type === 'activate-condition') {
+        if (!conditionIds.has(step.conditionId)) errors.push(`${level.id}: standard solution references missing condition ${step.conditionId}`)
+        else if (!level.availableConditionIds.includes(step.conditionId)) errors.push(`${level.id}: standard solution condition ${step.conditionId} is not available`)
         continue
       }
-      if (removed.has(tileId)) errors.push(`${level.id}: standard solution repeats tile ${tileId}`)
+      const tile = tileById.get(step.tileId)
+      if (!tile) {
+        errors.push(`${level.id}: standard solution references missing tile ${step.tileId}`)
+        continue
+      }
+      if (removed.has(step.tileId)) errors.push(`${level.id}: standard solution repeats tile ${step.tileId}`)
       const remainingBlockers = tile.blockedByTileIds.filter((blockerId) => !removed.has(blockerId))
-      if (remainingBlockers.length) errors.push(`${level.id}: standard solution selects blocked tile ${tileId}`)
-      removed.add(tileId)
+      if (remainingBlockers.length) errors.push(`${level.id}: standard solution selects blocked tile ${step.tileId}`)
+      removed.add(step.tileId)
     }
   }
   return errors

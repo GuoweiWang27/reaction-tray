@@ -9,6 +9,8 @@ const tile = (
   blockedByTileIds: string[] = [],
 ): BoardTileDefinition => ({ tileId, speciesId, x, y, z, width: 2, height: 1, blockedByTileIds })
 
+const select = (tileId: string) => ({ type: 'select-tile' as const, tileId })
+
 const pendingReview = { status: 'pending' as const, version: '1.1.0' }
 
 export const verticalSliceLevels: LevelDefinition[] = [
@@ -23,7 +25,7 @@ export const verticalSliceLevels: LevelDefinition[] = [
       tile('l1-h-3', 'species.hydrogen-ion', 1.5, 1, 0, ['l1-h-1', 'l1-oh-1']),
       tile('l1-oh-3', 'species.hydroxide-ion', 7.5, 1, 0, ['l1-h-2', 'l1-oh-2']),
     ],
-    standardSolutionTileIds: ['l1-h-1', 'l1-oh-1', 'l1-h-2', 'l1-oh-2', 'l1-h-3', 'l1-oh-3'],
+    standardSolutionSteps: ['l1-h-1', 'l1-oh-1', 'l1-h-2', 'l1-oh-2', 'l1-h-3', 'l1-oh-3'].map(select),
     toolLimits: { undo: 1, shuffle: 0, hint: 2 },
     starRules: { twoStarMaxTools: 1, threeStarMaxTools: 0, threeStarMaxMoves: 6 }, chemistryReview: pendingReview,
   },
@@ -43,7 +45,7 @@ export const verticalSliceLevels: LevelDefinition[] = [
       tile('l2-cl-3', 'species.chloride-ion', 9, 1, 0, ['l2-ag-2', 'l2-cl-2']),
       tile('l2-decoy-h-6', 'species.hydrogen-ion', 5, 2, 0, ['l2-decoy-h-1', 'l2-decoy-h-2']),
     ],
-    standardSolutionTileIds: ['l2-ag-1', 'l2-cl-1', 'l2-ag-2', 'l2-cl-2', 'l2-ag-3', 'l2-cl-3'],
+    standardSolutionSteps: ['l2-ag-1', 'l2-cl-1', 'l2-ag-2', 'l2-cl-2', 'l2-ag-3', 'l2-cl-3'].map(select),
     toolLimits: { undo: 1, shuffle: 0, hint: 2 },
     starRules: { twoStarMaxTools: 1, threeStarMaxTools: 0, threeStarMaxMoves: 6 }, chemistryReview: pendingReview,
   },
@@ -63,7 +65,7 @@ export const verticalSliceLevels: LevelDefinition[] = [
       tile('l3-oh-4', 'species.hydroxide-ion', 9, 1, 0, ['l3-cu-2', 'l3-oh-3']),
       tile('l3-decoy-cl-3', 'species.chloride-ion', 5, 2, 0, ['l3-decoy-h-1', 'l3-decoy-cl-1']),
     ],
-    standardSolutionTileIds: ['l3-cu-1', 'l3-oh-1', 'l3-oh-2', 'l3-cu-2', 'l3-oh-3', 'l3-oh-4'],
+    standardSolutionSteps: ['l3-cu-1', 'l3-oh-1', 'l3-oh-2', 'l3-cu-2', 'l3-oh-3', 'l3-oh-4'].map(select),
     toolLimits: { undo: 1, shuffle: 0, hint: 2 },
     starRules: { twoStarMaxTools: 1, threeStarMaxTools: 0, threeStarMaxMoves: 6 }, chemistryReview: pendingReview,
   },
