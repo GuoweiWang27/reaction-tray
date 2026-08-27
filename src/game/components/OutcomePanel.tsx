@@ -13,7 +13,7 @@ interface OutcomePanelProps {
 export function OutcomePanel({ status, moves, stars, bestMoves, onRestart, onCopy }: OutcomePanelProps) {
   const won = status === 'won'
   return (
-    <section className={`outcome outcome--${status}`} aria-label={won ? '关卡完成' : '关卡失败'}>
+    <section className={`outcome outcome--${status}`} aria-label={won ? '关卡完成' : '本轮实验失败'}>
       <div className="outcome-copy">
         <span className="outcome-kicker">{won ? 'RUN COMPLETE' : 'RUN INTERRUPTED'}</span>
         <strong>{won ? '样本链已完成' : '本轮实验失败'}</strong>

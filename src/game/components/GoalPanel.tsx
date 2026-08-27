@@ -6,9 +6,10 @@ interface GoalPanelProps {
   won: boolean
   targetHighlightActive: boolean
   onTargetClick: () => void
+  safetyNotes: string[]
 }
 
-export function GoalPanel({ view, won, targetHighlightActive, onTargetClick }: GoalPanelProps) {
+export function GoalPanel({ view, won, targetHighlightActive, onTargetClick, safetyNotes }: GoalPanelProps) {
   const targetReadout = `${view.current} / ${view.target}`
   const targetLabel = view.kind === 'produce'
     ? `目标产物 ${view.targetFormula}，${targetHighlightActive ? '重新提示' : '查看'}对应反应物`
@@ -65,6 +66,14 @@ export function GoalPanel({ view, won, targetHighlightActive, onTargetClick }: G
             </li>
           ))}
         </ol>
+      )}
+      {safetyNotes.length > 0 && (
+        <aside className="safety-strip" data-testid="safety-strip" aria-label="安全说明">
+          <span className="safety-strip-title">SAFETY NOTE</span>
+          <ul className="safety-strip-list">
+            {safetyNotes.map((note) => <li key={note}>{note}</li>)}
+          </ul>
+        </aside>
       )}
     </section>
   )

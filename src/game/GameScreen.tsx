@@ -4,7 +4,7 @@ import { chapters, levels } from '../content/levels'
 import { reactions } from '../content/reactions'
 import { species } from '../content/species'
 import { applyCommand, createGame, selectableTileIds, type EngineContext, type GameCommand, type GameEffect } from './engine'
-import { getLossFeedback } from './feedback'
+import { getLossFeedback, getReactionFeedback, getSafetyNotes } from './feedback'
 import { buildGoalView } from './goalProgress'
 import { solveLevel } from './solver'
 import { ChapterNavigator } from './components/ChapterNavigator'
@@ -19,12 +19,12 @@ const initialLevel = Number.isInteger(requestedLevel) && requestedLevel >= 1 && 
 const phaseLabel = (phase: string): string => ({ aq: 'AQUEOUS', s: 'SOLID', l: 'LIQUID', g: 'GAS' }[phase] ?? 'SPECIMEN')
 const accessibleSpeciesName = (item: (typeof species)[number]): string => item.kind === 'ion' ? `水溶液中的${item.nameZh}` : item.nameZh
 type ReactionEffect = Extract<GameEffect, { type: 'reaction' }>
-type ReactionCueKind = 'precipitate' | 'product' | 'signal'
-type ReactionCue = { id: number; kind: ReactionCueKind; label: string; formula: string; equation: string }
+type ReactionCueKind = 'precipitate' | 'product' | 'gas' | 'light' | 'metal' | 'color-change'
+type ReactionCue = { id: number; kind: ReactionCueKind; label: string; marker: string; formula: string; equation: string }
 type EffectReceipt = ReactionCue & { effectCount: number; total: number }
 type DirectionKey = 'ArrowLeft' | 'ArrowRight' | 'ArrowUp' | 'ArrowDown'
 type TileActionSource = 'pointer' | 'keyboard'
-type SoundKind = 'select' | 'reaction' | 'win'
+type SoundKind = 'select' | 'reaction' | 'win' | 'gas' | 'light' | 'metal' | 'color-change'
 type SoundProfile = { oscillator: OscillatorType; frequencies: number[]; duration: number; gain: number }
 
 const soundEnabledStorageKey = 'reaction-tray.sound-enabled.v1'
@@ -33,6 +33,10 @@ const soundProfiles: Record<SoundKind, SoundProfile> = {
   select: { oscillator: 'sine', frequencies: [440, 660], duration: 0.08, gain: 0.045 },
   reaction: { oscillator: 'triangle', frequencies: [262, 392, 523], duration: 0.18, gain: 0.055 },
   win: { oscillator: 'sine', frequencies: [523, 659, 784], duration: 0.36, gain: 0.065 },
+  gas: { oscillator: 'sine', frequencies: [196, 247, 294], duration: 0.22, gain: 0.05 },
+  light: { oscillator: 'sine', frequencies: [880, 1175, 1568], duration: 0.16, gain: 0.05 },
+  metal: { oscillator: 'square', frequencies: [220, 277, 330], duration: 0.2, gain: 0.04 },
+  'color-change': { oscillator: 'triangle', frequencies: [330, 415, 370], duration: 0.24, gain: 0.045 },
 }
 
 const readSoundEnabled = (): boolean => {
@@ -105,12 +109,17 @@ const nextKeyboardFocusTileId = (
   })[0]?.tileId ?? null
 }
 
-const cueKind = (effect: ReactionEffect): ReactionCueKind => effect.observableCue === 'precipitate'
-  ? 'precipitate'
-  : effect.observableCue === 'water'
-    ? 'product'
-    : 'signal'
-const cueLabel = (kind: ReactionCueKind): string => kind === 'precipitate' ? '沉淀生成' : kind === 'product' ? '产物生成' : '反应信号'
+const cueDetails: Record<ReactionCueKind, { label: string; marker: string }> = {
+  product: { label: '产物生成', marker: 'OUTPUT +' },
+  precipitate: { label: '沉淀生成', marker: 'PRECIPITATE ↓' },
+  gas: { label: '气体逸出', marker: 'GAS ↑' },
+  light: { label: '强光反馈', marker: 'LIGHT ✦' },
+  metal: { label: '金属析出', marker: 'METAL ▰' },
+  'color-change': { label: '颜色变化', marker: 'COLOR SHIFT ◐' },
+}
+
+const cueKind = (effect: ReactionEffect): ReactionCueKind => effect.observableCue === 'water' ? 'product' : effect.observableCue
+const cueSoundKind = (kind: ReactionCueKind): SoundKind => kind === 'product' || kind === 'precipitate' ? 'reaction' : kind
 
 export function GameScreen() {
   const [levelIndex, setLevelIndex] = useState(initialLevel)
@@ -122,6 +131,7 @@ export function GameScreen() {
   const conditionById = useMemo(() => new Map(conditions.map((item) => [item.id, item])), [])
   const [activeCues, setActiveCues] = useState<ReactionCue[]>([])
   const [effectReceipts, setEffectReceipts] = useState<EffectReceipt[]>([])
+  const [latestReceiptId, setLatestReceiptId] = useState<number | null>(null)
   const [hintedTileId, setHintedTileId] = useState<string | null>(null)
   const [hintFocus, setHintFocus] = useState<{ kind: 'tile'; tileId: string } | { kind: 'condition'; conditionId: string } | null>(null)
   const [hintMessage, setHintMessage] = useState<string | null>(null)
@@ -157,7 +167,8 @@ export function GameScreen() {
     const currentReaction = reactions.find((reaction) => reaction.id === goalView.currentReactionId && allowedReactionIds.has(reaction.id))
     return new Set(currentReaction?.reactants.map((reactant) => reactant.speciesId) ?? [])
   }, [goalView.currentReactionId, level.allowedReactions])
-  const latestReceipt = effectReceipts[0]
+  const safetyNotes = useMemo(() => getSafetyNotes(level, reactions, species), [level])
+  const latestReceipt = effectReceipts.find((receipt) => receipt.id === latestReceiptId) ?? effectReceipts[0]
   const awaitingCondition = state.status === 'awaiting-condition'
   const hintCopy = hintedTileId
     ? state.status !== 'playing'
@@ -176,7 +187,13 @@ export function GameScreen() {
           : null
     : null
   const feedbackCopy = hintCopy ?? hintMessage ?? coachCopy ?? feedback
-  const feedbackClassName = hintCopy || hintMessage ? 'feedback feedback--hint' : coachCopy ? 'feedback feedback--coach' : 'feedback'
+  const feedbackClassName = hintCopy || hintMessage
+    ? 'feedback feedback--hint'
+    : coachCopy
+      ? 'feedback feedback--coach'
+      : awaitingCondition
+        ? 'feedback feedback--awaiting'
+        : 'feedback'
   const undoRemaining = Math.max(0, level.toolLimits.undo - state.undoUsed)
   const undoLabel = undoRemaining === 0 ? 'LIMIT REACHED' : `UNDO ${undoRemaining}/${level.toolLimits.undo}`
   const currentProgress = progressState.levels[level.id]
@@ -197,7 +214,10 @@ export function GameScreen() {
     }
     if (resetSequence) effectSequence.current = 0
     setActiveCues([])
-    if (resetSequence) setEffectReceipts([])
+    if (resetSequence) {
+      setEffectReceipts([])
+      setLatestReceiptId(null)
+    }
   }
 
   const clearSlotFloat = () => {
@@ -240,15 +260,17 @@ export function GameScreen() {
     const firstId = effectSequence.current + 1
     const cues = effects.map((effect, index) => {
       const kind = cueKind(effect)
+      const details = cueDetails[kind]
       const formula = effect.productSpeciesIds.map((speciesId) => speciesById.get(speciesId)?.formula).filter(Boolean).join(' + ') || '—'
-      return { id: firstId + index, kind, label: cueLabel(kind), formula, equation: effect.equation }
+      return { id: firstId + index, kind, label: details.label, marker: details.marker, formula, equation: effect.equation }
     })
     effectSequence.current += cues.length
     const newReceipts = cues.map((cue, index) => ({
       ...cue,
       effectCount: effects.length,
       total: firstId + index,
-    })).reverse()
+    }))
+    setLatestReceiptId(newReceipts.at(-1)?.id ?? null)
     setActiveCues(cues)
     setEffectReceipts((current) => [...newReceipts, ...current].slice(0, 3))
     const reducedMotion = window.matchMedia?.('(prefers-reduced-motion: reduce)').matches ?? false
@@ -416,19 +438,32 @@ export function GameScreen() {
       const item = trayEntry ? speciesById.get(trayEntry.speciesId) : undefined
       if (trayEntry && item) showSlotFloat(trayIndex + 1, item.formula)
     }
-    const reactionEffect = reactionEffects[0]
-    const acceptedSelection = command.type === 'select-tile' && result.state.moveCount > state.moveCount
-    if (acceptedSelection) {
-      if (result.state.status === 'won') playSound('win')
-      else if (reactionEffects.length > 0) playSound('reaction')
+    const reactionFeedback = getReactionFeedback(reactionEffects.map((effect) => effect.reactionId), reactions)
+    const activatedCondition = command.type === 'activate-condition' && result.state.moveCount > state.moveCount
+      ? conditionById.get(command.conditionId)
+      : undefined
+    const conditionFeedback = activatedCondition
+      ? ` · ${activatedCondition.nameZh}${activatedCondition.lifecycle === 'persistent' ? '保持激活' : '已使用'}`
+      : ''
+    const acceptedCommand = result.state.moveCount > state.moveCount
+    if (acceptedCommand) {
+      if (reactionEffects.length > 0) playSound(cueSoundKind(cueKind(reactionEffects[0])))
       else playSound('select')
+      if (result.state.status === 'won') playSound('win')
     }
 
-    if (result.state.status === 'won') setFeedback('关卡完成 · 目标产物已达到标准。')
-    else if (result.state.status === 'lost') setFeedback(`关卡失败 · ${getLossFeedback(result.state)}`)
+    if (result.state.status === 'won') {
+      const detail = goalView.kind === 'sequence'
+        ? '反应序列已按顺序完成'
+        : reactionFeedback
+          ? reactionFeedback.replace(/^反应完成 · /, '')
+          : '目标产物已达到标准'
+      setFeedback(`关卡完成 · ${detail}`)
+    } else if (result.state.status === 'lost') setFeedback(`本轮实验失败 · ${getLossFeedback(result.state)}`)
     else if (result.effects.some((effect) => effect.type === 'restored')) setFeedback('已撤回上一步及其自动反应。')
-    else if (reactionEffect?.type === 'reaction') setFeedback(`反应完成 · ${reactionEffect.equation}`)
-    else if (result.state.status === 'awaiting-condition') setFeedback('反应槽已满 · 选择本关条件以继续观察。')
+    else if (reactionFeedback) setFeedback(`${reactionFeedback}${conditionFeedback}`)
+    else if (activatedCondition) setFeedback(`条件已激活${conditionFeedback}`)
+    else if (result.state.status === 'awaiting-condition') setFeedback('反应槽已满 · 等待使用可用条件继续观察。')
     else if (command.type === 'select-tile') setFeedback('样本已入槽 · 继续寻找能形成反应的组合。')
   }
 
@@ -542,6 +577,7 @@ export function GameScreen() {
           won={state.status === 'won'}
           targetHighlightActive={targetHighlightActive}
           onTargetClick={triggerTargetHighlight}
+          safetyNotes={safetyNotes}
         />
 
         <section className="field-panel" aria-labelledby="field-heading">
@@ -607,7 +643,7 @@ export function GameScreen() {
                   <div key={cue.id} className={`reaction-cue reaction-cue--${cue.kind}`}>
                     <span>{cue.label}</span>
                     <strong>{cue.formula}</strong>
-                    <small>{cue.kind === 'precipitate' ? '↓' : 'OUTPUT'}</small>
+                    <small>{cue.marker}</small>
                   </div>
                 ))}
               </div>
@@ -624,11 +660,11 @@ export function GameScreen() {
               aria-label={`反应日志，最新 ${latestReceipt.label}，${latestReceipt.formula}，已消费 ${latestReceipt.total} 个反应效果，共 ${effectReceipts.length} 条`}
             >
               <div className="effect-receipt-list">
-                {effectReceipts.map((receipt, index) => (
-                  <div key={receipt.id} className={index === 0 ? 'effect-receipt-item' : 'effect-receipt-item effect-receipt-item--history'}>
-                    {index === 0 ? (
+                {effectReceipts.map((receipt) => (
+                  <div key={receipt.id} className={receipt.id === latestReceipt.id ? 'effect-receipt-item' : 'effect-receipt-item effect-receipt-item--history'}>
+                    {receipt.id === latestReceipt.id ? (
                       <>
-                        <span>{receipt.label}</span>
+                        <span>{receipt.marker} · {receipt.label}</span>
                         <strong>{receipt.formula}</strong>
                         <small>EFFECT {String(receipt.total).padStart(2, '0')} · {receipt.equation}</small>
                       </>
@@ -706,7 +742,13 @@ export function GameScreen() {
                     onClick={() => send({ type: 'activate-condition', conditionId })}
                   >
                     <span>{condition?.nameZh ?? conditionId}</span>
-                    <small>{condition?.lifecycle === 'persistent' ? 'PERSISTENT' : 'ONE-SHOT'}</small>
+                    <small>
+                      {active
+                        ? `本轮已激活 · ${condition?.lifecycle === 'persistent' ? 'PERSISTENT' : 'ONE-SHOT'}`
+                        : awaitingCondition
+                          ? `等待使用 · ${condition?.lifecycle === 'persistent' ? 'PERSISTENT' : 'ONE-SHOT'}`
+                          : condition?.lifecycle === 'persistent' ? 'PERSISTENT' : 'ONE-SHOT'}
+                    </small>
                   </button>
                 )
               })}
