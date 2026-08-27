@@ -1,9 +1,10 @@
-import { useMemo, useState, type CSSProperties } from 'react'
+import { useEffect, useMemo, useRef, useState, type CSSProperties } from 'react'
 import { conditions } from '../content/conditions'
 import { verticalSliceLevels } from '../content/levels/vertical-slice'
 import { reactions } from '../content/reactions'
 import { species } from '../content/species'
-import { applyCommand, createGame, selectableTileIds, type EngineContext, type GameCommand } from './engine'
+import { applyCommand, createGame, selectableTileIds, type EngineContext, type GameCommand, type GameEffect } from './engine'
+import { getLossFeedback } from './feedback'
 import './game.css'
 
 const requestedLevel = Number(new URLSearchParams(window.location.search).get('level') ?? '1')
@@ -11,6 +12,17 @@ const initialLevel = Number.isInteger(requestedLevel) ? Math.min(2, Math.max(0, 
 
 const phaseLabel = (phase: string): string => ({ aq: 'AQUEOUS', s: 'SOLID', l: 'LIQUID', g: 'GAS' }[phase] ?? 'SPECIMEN')
 const accessibleSpeciesName = (item: (typeof species)[number]): string => item.kind === 'ion' ? `水溶液中的${item.nameZh}` : item.nameZh
+type ReactionEffect = Extract<GameEffect, { type: 'reaction' }>
+type ReactionCueKind = 'precipitate' | 'product' | 'signal'
+type ReactionCue = { id: number; kind: ReactionCueKind; label: string; formula: string; equation: string }
+type EffectReceipt = ReactionCue & { effectCount: number; total: number }
+
+const cueKind = (effect: ReactionEffect): ReactionCueKind => effect.observableCue === 'precipitate'
+  ? 'precipitate'
+  : effect.observableCue === 'water'
+    ? 'product'
+    : 'signal'
+const cueLabel = (kind: ReactionCueKind): string => kind === 'precipitate' ? '沉淀生成' : kind === 'product' ? '产物生成' : '反应信号'
 
 export function GameScreen() {
   const [levelIndex, setLevelIndex] = useState(initialLevel)
@@ -20,6 +32,10 @@ export function GameScreen() {
   const [feedback, setFeedback] = useState('选择未被遮挡的物质卡，观察它们如何在槽中相遇。')
   const speciesById = useMemo(() => new Map(species.map((item) => [item.id, item])), [])
   const conditionById = useMemo(() => new Map(conditions.map((item) => [item.id, item])), [])
+  const [activeCues, setActiveCues] = useState<ReactionCue[]>([])
+  const [effectReceipt, setEffectReceipt] = useState<EffectReceipt | null>(null)
+  const cueTimer = useRef<number | null>(null)
+  const effectSequence = useRef(0)
   const selectable = new Set(selectableTileIds(state, level))
   const remaining = new Set(state.remainingTileIds)
   const goal = level.goals[0]
@@ -34,13 +50,50 @@ export function GameScreen() {
         ? 'AWAIT CONDITION'
         : 'READY'
 
+  const clearReactionCue = (resetSequence = false) => {
+    if (cueTimer.current !== null) {
+      window.clearTimeout(cueTimer.current)
+      cueTimer.current = null
+    }
+    if (resetSequence) effectSequence.current = 0
+    setActiveCues([])
+    setEffectReceipt(null)
+  }
+
+  const presentReactionEffects = (effects: ReactionEffect[]) => {
+    if (!effects.length) return
+    const firstId = effectSequence.current + 1
+    const cues = effects.map((effect, index) => {
+      const kind = cueKind(effect)
+      const formula = effect.productSpeciesIds.map((speciesId) => speciesById.get(speciesId)?.formula).filter(Boolean).join(' + ') || '—'
+      return { id: firstId + index, kind, label: cueLabel(kind), formula, equation: effect.equation }
+    })
+    effectSequence.current += cues.length
+    const lastCue = cues[cues.length - 1]
+    setActiveCues(cues)
+    setEffectReceipt({ ...lastCue, effectCount: effects.length, total: effectSequence.current })
+    const reducedMotion = window.matchMedia?.('(prefers-reduced-motion: reduce)').matches ?? false
+    if (cueTimer.current !== null) window.clearTimeout(cueTimer.current)
+    cueTimer.current = window.setTimeout(() => {
+      setActiveCues([])
+      cueTimer.current = null
+    }, reducedMotion ? 80 : 900)
+  }
+
+  useEffect(() => () => {
+    if (cueTimer.current !== null) window.clearTimeout(cueTimer.current)
+  }, [])
+
   const send = (command: GameCommand) => {
+    clearReactionCue(command.type === 'undo')
     const result = applyCommand(state, command, context)
     setState(result.state)
-    const reactionEffect = result.effects.find((effect) => effect.type === 'reaction')
+    const reactionEffects = result.effects.filter((effect): effect is ReactionEffect => effect.type === 'reaction')
+    presentReactionEffects(reactionEffects)
+    const reactionEffect = reactionEffects[0]
 
     if (result.state.status === 'won') setFeedback('关卡完成 · 目标产物已达到标准。')
-    else if (result.state.status === 'lost') setFeedback('关卡失败 · 反应槽已满且没有可触发反应。')
+    else if (result.state.status === 'lost') setFeedback(`关卡失败 · ${getLossFeedback(result.state)}`)
     else if (result.effects.some((effect) => effect.type === 'restored')) setFeedback('已撤回上一步及其自动反应。')
     else if (reactionEffect?.type === 'reaction') setFeedback(`反应完成 · ${reactionEffect.equation}`)
     else if (result.state.status === 'awaiting-condition') setFeedback('反应槽已满 · 选择本关条件以继续观察。')
@@ -48,11 +101,13 @@ export function GameScreen() {
   }
 
   const restartLevel = () => {
+    clearReactionCue(true)
     setState(createGame(level))
     setFeedback('实验台已复位 · 选择未被遮挡的物质卡。')
   }
 
   const chooseLevel = (index: number) => {
+    clearReactionCue(true)
     setLevelIndex(index)
     setState(createGame(verticalSliceLevels[index]))
     setFeedback('实验台已切换 · 选择未被遮挡的物质卡。')
@@ -135,7 +190,33 @@ export function GameScreen() {
                 </button>
               )
             })}
+            {activeCues.length > 0 && (
+              <div className="reaction-cue-layer" aria-hidden="true">
+                {activeCues.map((cue) => (
+                  <div key={cue.id} className={`reaction-cue reaction-cue--${cue.kind}`}>
+                    <span>{cue.label}</span>
+                    <strong>{cue.formula}</strong>
+                    <small>{cue.kind === 'precipitate' ? '↓' : 'OUTPUT'}</small>
+                  </div>
+                ))}
+              </div>
+            )}
           </div>
+          {effectReceipt && (
+            <div
+              className={`effect-receipt effect-receipt--${effectReceipt.kind}`}
+              data-testid="reaction-effect"
+              data-cue-kind={effectReceipt.kind}
+              data-effect-count={effectReceipt.effectCount}
+              data-effect-total={effectReceipt.total}
+              role="img"
+              aria-label={`${effectReceipt.label}，${effectReceipt.formula}，已消费 ${effectReceipt.total} 个反应效果`}
+            >
+              <span>{effectReceipt.label}</span>
+              <strong>{effectReceipt.formula}</strong>
+              <small>EFFECT {String(effectReceipt.total).padStart(2, '0')} · {effectReceipt.equation}</small>
+            </div>
+          )}
           <p className="field-instruction" id="field-instruction">
             <span className="legend-dot legend-dot--open" aria-hidden="true" /> OPEN 可取出
             <span className="legend-dot legend-dot--locked" aria-hidden="true" /> LOCKED 被遮挡

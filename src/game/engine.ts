@@ -2,7 +2,13 @@ import type { ConditionDefinition, ConditionId, LevelDefinition, ReactionDefinit
 
 export type GameStatus = 'playing' | 'awaiting-condition' | 'won' | 'lost'
 export type GameCommand = { type: 'select-tile'; tileId: string } | { type: 'activate-condition'; conditionId: ConditionId } | { type: 'undo' }
-export type GameEffect = { type: 'reaction'; reactionId: string; equation: string } | { type: 'restored' }
+export type GameEffect = {
+  type: 'reaction'
+  reactionId: string
+  equation: string
+  observableCue: ReactionDefinition['observableCue']
+  productSpeciesIds: string[]
+} | { type: 'restored' }
 export type TrayEntry = { tileId: string; speciesId: string }
 export interface GameSnapshot { remainingTileIds: string[]; tray: TrayEntry[]; produced: Record<string, number>; performed: Record<string, number>; activeConditionIds: ConditionId[]; moveCount: number; status: GameStatus; undoUsed: number }
 export interface GameState extends GameSnapshot { history: GameSnapshot[] }
@@ -76,7 +82,13 @@ function settle(input: GameSnapshot, context: EngineContext): { state: GameSnaps
     }
     const oneShot = new Set(context.conditions.filter((item) => item.lifecycle === 'one-shot').map((item) => item.id))
     state.activeConditionIds = state.activeConditionIds.filter((id) => !reaction.requiredConditionIds.includes(id) || !oneShot.has(id))
-    effects.push({ type: 'reaction', reactionId: reaction.id, equation: reaction.equationDisplay })
+    effects.push({
+      type: 'reaction',
+      reactionId: reaction.id,
+      equation: reaction.equationDisplay,
+      observableCue: reaction.observableCue,
+      productSpeciesIds: reaction.products.flatMap((product) => Array.from({ length: product.coefficient }, () => product.speciesId)),
+    })
   }
   if (goalsMet(state, context.level)) state.status = 'won'
   else if (state.tray.length >= context.level.trayCapacity) state.status = usefulConditionExists(state, context) ? 'awaiting-condition' : 'lost'

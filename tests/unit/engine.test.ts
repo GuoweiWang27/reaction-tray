@@ -31,6 +31,19 @@ describe('game engine', () => {
     expect(state.tray).toEqual([])
   })
 
+  it('returns presentation details with each reaction effect', () => {
+    const ctx = context(2)
+    let state = createGame(ctx.level)
+    for (const tileId of ['l3-cu-1', 'l3-oh-1']) state = applyCommand(state, { type: 'select-tile', tileId }, ctx).state
+    const result = applyCommand(state, { type: 'select-tile', tileId: 'l3-oh-2' }, ctx)
+    expect(result.effects).toContainEqual(expect.objectContaining({
+      type: 'reaction',
+      reactionId: 'reaction.copper-hydroxide-ionic',
+      observableCue: 'precipitate',
+      productSpeciesIds: ['species.copper-ii-hydroxide'],
+    }))
+  })
+
   it('loses when an inert decoy fills a one-slot tray', () => {
     const ctx = context(2)
     const cappedContext: EngineContext = { ...ctx, level: { ...ctx.level, trayCapacity: 1 } }
