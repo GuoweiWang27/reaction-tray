@@ -16,9 +16,9 @@ interface ChapterNavigatorProps {
 }
 
 const recordText = (entry: ProgressEntry | undefined): string => {
-  if (!entry?.cleared) return ''
+  if (!entry?.cleared) return 'NOT CLEARED'
   if (entry.bestMoves === undefined) return 'CLEARED'
-  return `CLEARED · BEST ${entry.bestMoves}${entry.bestStars ? ` · ${'★'.repeat(entry.bestStars)}` : ''}`
+  return `BEST ${entry.bestMoves}${entry.bestStars ? ` · ${'★'.repeat(entry.bestStars)}` : ''}`
 }
 
 export function ChapterNavigator({ chapters, levels, currentLevelOrder, progress, onSelectLevel }: ChapterNavigatorProps) {
@@ -28,6 +28,8 @@ export function ChapterNavigator({ chapters, levels, currentLevelOrder, progress
       .map((order) => levels.find((level) => level.order === order))
       .filter((level): level is LevelDefinition => Boolean(level))
     : []
+  const currentLevel = visibleLevels.find((level) => level.order === currentLevelOrder) ?? visibleLevels[0]
+  const currentEntry = currentLevel ? progress.levels[currentLevel.id] : undefined
 
   const selectChapter = (chapter: ChapterSummary) => {
     const firstLevel = levels.find((level) => level.order === chapter.levelOrders[0])
@@ -59,23 +61,48 @@ export function ChapterNavigator({ chapters, levels, currentLevelOrder, progress
         {visibleLevels.map((level) => {
           const levelIndex = levels.indexOf(level)
           const entry = progress.levels[level.id]
+          const isCurrent = level.order === currentLevelOrder
+          const stateLabel = isCurrent ? 'CURRENT' : entry?.cleared ? 'CLEARED' : 'OPEN'
           return (
             <button
               key={level.id}
               type="button"
-              className={level.order === currentLevelOrder ? 'level-button level-button--active' : 'level-button'}
+              className={[
+                'level-button',
+                isCurrent ? 'level-button--active level-button--current' : '',
+                entry?.cleared ? 'level-button--cleared' : 'level-button--uncleared',
+              ].filter(Boolean).join(' ')}
               data-testid={`level-button-${level.order}`}
               onClick={() => onSelectLevel(levelIndex)}
-              aria-pressed={level.order === currentLevelOrder}
+              aria-pressed={isCurrent}
               aria-label={`选择第 ${level.order} 关 · ${level.titleZh}${entry?.cleared ? ' · 已完成' : ''}`}
             >
               <span className="level-index">{String(level.order).padStart(2, '0')}</span>
-              <span>{`选择第 ${level.order} 关`}</span>
-              {entry?.cleared && <span className="level-cleared">{recordText(entry)}</span>}
+              <span className="level-title">{level.titleZh}</span>
+              <span className="level-state">
+                <span className="level-state-marker" aria-hidden="true" />
+                <span>{stateLabel}</span>
+              </span>
+              {entry?.cleared && (
+                <span className="level-record-compat" aria-hidden="true">{recordText(entry)}</span>
+              )}
             </button>
           )
         })}
       </div>
+      {currentLevel && (
+        <div
+          className="level-summary"
+          aria-label={`当前关卡 L${String(currentLevel.order).padStart(2, '0')} · ${currentLevel.titleZh} · ${recordText(currentEntry)}`}
+          aria-live="polite"
+        >
+          <span className="level-summary-kicker">CURRENT LEVEL</span>
+          <div className="level-summary-content">
+            <strong>{`L${String(currentLevel.order).padStart(2, '0')} · ${currentLevel.titleZh}`}</strong>
+            <span>{recordText(currentEntry)}</span>
+          </div>
+        </div>
+      )}
     </nav>
   )
 }
