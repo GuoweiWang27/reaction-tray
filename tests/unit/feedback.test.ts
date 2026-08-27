@@ -1,13 +1,13 @@
 import { describe, expect, it } from 'vitest'
 import { conditions } from '../../src/content/conditions'
-import { verticalSliceLevels } from '../../src/content/levels/vertical-slice'
+import { levels } from '../../src/content/levels'
 import { reactions } from '../../src/content/reactions'
 import { applyCommand, createGame, type EngineContext } from '../../src/game/engine'
 import { getLossFeedback } from '../../src/game/feedback'
 
 describe('game feedback', () => {
   it('distinguishes an exhausted board from a full reaction tray', () => {
-    const sourceLevel = verticalSliceLevels[2]
+    const sourceLevel = levels[2]
     const exhaustedLevel = {
       ...sourceLevel,
       board: [sourceLevel.board.find((tile) => tile.tileId === 'l3-decoy-h-1')!],

@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { conditions } from '../../src/content/conditions'
-import { verticalSliceLevels } from '../../src/content/levels/vertical-slice'
+import { levels } from '../../src/content/levels'
 import { reactions } from '../../src/content/reactions'
 import { applyCommand, createGame, selectableTileIds, type EngineContext } from '../../src/game/engine'
 
@@ -16,7 +16,7 @@ const fixtureTile = (tileId: string, speciesId: string) => ({
 })
 
 const igniteLevel = {
-  ...verticalSliceLevels[0],
+  ...levels[0],
   id: 'fixture.ignite',
   order: 1,
   trayCapacity: 3,
@@ -31,7 +31,7 @@ const igniteLevel = {
 }
 
 const catalystLevel = {
-  ...verticalSliceLevels[0],
+  ...levels[0],
   id: 'fixture.catalyst',
   order: 1,
   trayCapacity: 2,
@@ -47,7 +47,7 @@ const catalystLevel = {
 }
 
 const l19Level = {
-  ...verticalSliceLevels[0],
+  ...levels[0],
   id: 'fixture.l19',
   order: 1,
   trayCapacity: 4,
@@ -81,9 +81,9 @@ const run = (state: ReturnType<typeof createGame>, commands: Array<{ type: 'sele
   return next
 }
 
-const context = (levelIndex: number): EngineContext => ({ level: verticalSliceLevels[levelIndex], reactions, conditions })
+const context = (levelIndex: number): EngineContext => ({ level: levels[levelIndex], reactions, conditions })
 const contextWithIgnite = (): EngineContext => ({
-  level: { ...verticalSliceLevels[0], availableConditionIds: ['ignite'] },
+  level: { ...levels[0], availableConditionIds: ['ignite'] },
   reactions,
   conditions,
 })

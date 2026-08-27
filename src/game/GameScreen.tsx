@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState, type CSSProperties } from 'react'
 import { conditions } from '../content/conditions'
-import { verticalSliceLevels } from '../content/levels/vertical-slice'
+import { levels } from '../content/levels'
 import { reactions } from '../content/reactions'
 import { species } from '../content/species'
 import { applyCommand, createGame, selectableTileIds, type EngineContext, type GameCommand, type GameEffect } from './engine'
@@ -8,7 +8,7 @@ import { getLossFeedback } from './feedback'
 import './game.css'
 
 const requestedLevel = Number(new URLSearchParams(window.location.search).get('level') ?? '1')
-const initialLevel = Number.isInteger(requestedLevel) ? Math.min(2, Math.max(0, requestedLevel - 1)) : 0
+const initialLevel = Number.isInteger(requestedLevel) ? Math.min(9, Math.max(0, requestedLevel - 1)) : 0
 
 const phaseLabel = (phase: string): string => ({ aq: 'AQUEOUS', s: 'SOLID', l: 'LIQUID', g: 'GAS' }[phase] ?? 'SPECIMEN')
 const accessibleSpeciesName = (item: (typeof species)[number]): string => item.kind === 'ion' ? `水溶液中的${item.nameZh}` : item.nameZh
@@ -65,7 +65,7 @@ const directionKeys = new Set<DirectionKey>(['ArrowLeft', 'ArrowRight', 'ArrowUp
 const nextDirectionalTileId = (
   tileId: string,
   key: string,
-  visibleTiles: typeof verticalSliceLevels[number]['board'],
+  visibleTiles: typeof levels[number]['board'],
 ): string | null => {
   if (!directionKeys.has(key as DirectionKey)) return null
   const currentIndex = visibleTiles.findIndex((tile) => tile.tileId === tileId)
@@ -99,7 +99,7 @@ const nextDirectionalTileId = (
 const nextKeyboardFocusTileId = (
   selectedTileId: string,
   nextState: ReturnType<typeof createGame>,
-  level: typeof verticalSliceLevels[number],
+  level: typeof levels[number],
 ): string | null => {
   const selectedTile = level.board.find((tile) => tile.tileId === selectedTileId)
   if (!selectedTile) return null
@@ -131,9 +131,9 @@ const cueLabel = (kind: ReactionCueKind): string => kind === 'precipitate' ? '�
 
 export function GameScreen() {
   const [levelIndex, setLevelIndex] = useState(initialLevel)
-  const level = verticalSliceLevels[levelIndex]
+  const level = levels[levelIndex]
   const context = useMemo<EngineContext>(() => ({ level, reactions, conditions }), [level])
-  const [state, setState] = useState(() => createGame(verticalSliceLevels[initialLevel]))
+  const [state, setState] = useState(() => createGame(levels[initialLevel]))
   const [feedback, setFeedback] = useState('选择未被遮挡的物质卡，观察它们如何在槽中相遇。')
   const speciesById = useMemo(() => new Map(species.map((item) => [item.id, item])), [])
   const conditionById = useMemo(() => new Map(conditions.map((item) => [item.id, item])), [])
@@ -432,7 +432,7 @@ export function GameScreen() {
     pendingKeyboardFocus.current = null
     setHintedTileId(null)
     setLevelIndex(index)
-    setState(createGame(verticalSliceLevels[index]))
+    setState(createGame(levels[index]))
     setFeedback('实验台已切换 · 选择未被遮挡的物质卡。')
   }
 
@@ -503,8 +503,8 @@ export function GameScreen() {
           </div>
         </header>
 
-        <nav className="level-selector" aria-label="垂直切片关卡">
-          {verticalSliceLevels.map((item, index) => (
+        <nav className="level-selector" aria-label="关卡选择">
+          {levels.map((item, index) => (
             <button
               key={item.id}
               type="button"
@@ -512,7 +512,7 @@ export function GameScreen() {
               onClick={() => chooseLevel(index)}
               aria-pressed={index === levelIndex}
             >
-              <span className="level-index">0{index + 1}</span>
+              <span className="level-index">{String(index + 1).padStart(2, '0')}</span>
               <span>选择第 {index + 1} 关</span>
               {clearedLevelIdSet.has(item.id) && <span className="level-cleared">CLEARED</span>}
             </button>

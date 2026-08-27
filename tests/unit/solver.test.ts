@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { conditions } from '../../src/content/conditions'
-import { verticalSliceLevels } from '../../src/content/levels/vertical-slice'
+import { levels } from '../../src/content/levels'
 import { reactions } from '../../src/content/reactions'
 import { applyCommand, createGame, type EngineContext } from '../../src/game/engine'
 import { solveLevel } from '../../src/game/solver'
@@ -17,7 +17,7 @@ const tile = (tileId: string, speciesId: string) => ({
 })
 
 const conditionLevel = {
-  ...verticalSliceLevels[0],
+  ...levels[0],
   id: 'fixture.solver-ignite',
   order: 1,
   trayCapacity: 3,
@@ -32,7 +32,7 @@ const conditionLevel = {
 }
 
 const impossibleLevel = {
-  ...verticalSliceLevels[0],
+  ...levels[0],
   id: 'fixture.solver-unsolved',
   order: 1,
   board: [tile('solver-decoy', 'species.sodium-chloride')],
@@ -40,7 +40,7 @@ const impossibleLevel = {
 }
 
 const frontierLevel = {
-  ...verticalSliceLevels[0],
+  ...levels[0],
   id: 'fixture.solver-frontier',
   order: 1,
   trayCapacity: 3,
@@ -53,20 +53,23 @@ const frontierLevel = {
   ],
 }
 
-describe.each(verticalSliceLevels)('$id', (level) => {
+describe.each(levels)('$id', (level) => {
   it('has a no-tool solution within the CI bound', () => {
-    const result = solveLevel({ level, reactions, conditions }, { maxNodes: 100_000, timeoutMs: 2_000 })
+    const result = solveLevel({ level, reactions, conditions }, { maxNodes: 200_000, timeoutMs: 3_000 })
     expect(result.status).toBe('solved')
     expect(result.path.length).toBeGreaterThan(0)
     expect(result.safeFirstSteps.length).toBeGreaterThan(0)
     expect(result.path[0]).toMatchObject({ type: 'select-tile' })
+    if (level.order >= 9) {
+      expect(result.path.filter((step) => step.type === 'activate-condition' && step.conditionId === 'ignite')).toHaveLength(2)
+    }
   })
 })
 
 describe('progress command solver', () => {
   it('finds condition commands and exposes safe first steps', () => {
     const context: EngineContext = { level: conditionLevel, reactions, conditions }
-    const result = solveLevel(context, { maxNodes: 100_000, timeoutMs: 2_000 })
+    const result = solveLevel(context, { maxNodes: 200_000, timeoutMs: 3_000 })
 
     expect(result.status).toBe('solved')
     if (result.status !== 'solved') throw new Error('expected solved')
@@ -75,10 +78,10 @@ describe('progress command solver', () => {
   })
 
   it('solves from an arbitrary current state without replaying removed tiles', () => {
-    const level = verticalSliceLevels[2]
+    const level = levels[2]
     const context: EngineContext = { level, reactions, conditions }
     const partial = applyCommand(createGame(level), { type: 'select-tile', tileId: 'l3-cu-1' }, context).state
-    const result = solveLevel(context, { maxNodes: 100_000, timeoutMs: 2_000 }, partial)
+    const result = solveLevel(context, { maxNodes: 200_000, timeoutMs: 3_000 }, partial)
 
     expect(result.status).toBe('solved')
     if (result.status !== 'solved') throw new Error('expected solved')
@@ -86,7 +89,7 @@ describe('progress command solver', () => {
   })
 
   it('reports bounded search outcomes explicitly', () => {
-    const context: EngineContext = { level: verticalSliceLevels[0], reactions, conditions }
+    const context: EngineContext = { level: levels[0], reactions, conditions }
     const nodeLimited = solveLevel(context, { maxNodes: 0, timeoutMs: 2_000 })
     const timedOut = solveLevel(context, { maxNodes: 100_000, timeoutMs: 0 })
     const unsolved = solveLevel({ level: impossibleLevel, reactions, conditions }, { maxNodes: 100_000, timeoutMs: 2_000 })

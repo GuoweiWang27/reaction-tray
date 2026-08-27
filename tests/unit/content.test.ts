@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { conditions } from '../../src/content/conditions'
-import { verticalSliceLevels } from '../../src/content/levels/vertical-slice'
+import { levels } from '../../src/content/levels'
 import { reactions } from '../../src/content/reactions'
 import { species } from '../../src/content/species'
 import { validateAllContent, validateChemistry, validateLevels } from '../../src/content/validateContent'
@@ -13,25 +13,30 @@ describe('content baseline', () => {
     expect(validateChemistry(species, reactions)).toEqual([])
   })
 
-  it('contains three structurally valid vertical-slice levels', () => {
-    expect(verticalSliceLevels).toHaveLength(3)
-    expect(validateAllContent(species, reactions, conditions, verticalSliceLevels)).toEqual([])
+  it('contains ten structurally valid canonical levels', () => {
+    expect(levels).toHaveLength(10)
+    expect(levels.map((level) => level.order)).toEqual([1, 2, 3, 4, 5, 6, 7, 8, 9, 10])
+    expect(validateAllContent(species, reactions, conditions, levels)).toEqual([])
   })
 
   it('stores every standard solution as executable progress commands', () => {
-    const levels = verticalSliceLevels as Array<typeof verticalSliceLevels[number] & { standardSolutionSteps?: unknown[] }>
     expect(levels.every((level) => Array.isArray(level.standardSolutionSteps))).toBe(true)
     expect(validateExecutableLevels(levels, reactions, conditions)).toEqual([])
   })
 
-  it('rejects unavailable condition steps, duplicate orders and ambiguous priorities', () => {
-    const source = verticalSliceLevels[0] as typeof verticalSliceLevels[number] & {
-      standardSolutionSteps?: Array<{ type: 'select-tile'; tileId: string }>
-      standardSolutionTileIds?: string[]
+  it('keeps the two ignition phases in both Chapter 2 combustion levels', () => {
+    for (const level of levels.slice(8, 10)) {
+      expect(level.availableConditionIds).toEqual(['ignite'])
+      expect(level.standardSolutionSteps.filter((step) => step.type === 'activate-condition')).toEqual([
+        { type: 'activate-condition', conditionId: 'ignite' },
+        { type: 'activate-condition', conditionId: 'ignite' },
+      ])
     }
+  })
+
+  it('rejects unavailable condition steps, duplicate orders and ambiguous priorities', () => {
+    const source = levels[0]
     const standardSolutionSteps = source.standardSolutionSteps
-      ?? source.standardSolutionTileIds?.map((tileId) => ({ type: 'select-tile' as const, tileId }))
-      ?? []
     const unavailableCondition = {
       ...source,
       standardSolutionSteps: [...standardSolutionSteps, { type: 'activate-condition' as const, conditionId: 'ignite' as const }],
