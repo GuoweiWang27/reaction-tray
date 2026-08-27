@@ -1,3 +1,10 @@
+:root,
+html,
+body {
+  background: #faf8f5;
+  color-scheme: light;
+}
+
 .game-shell {
   /* —— 色板（对齐 CHEMAI101 tailwind science/sand） —— */
   --paper:        #faf8f5;
