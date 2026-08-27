@@ -5,6 +5,8 @@
 > 范围：第 1～3 关垂直切片先行；通过门槛后再扩展到 20 关
 > 上游来源：`/Users/yimu/Desktop/chem-reaction-slot-mvp-development-plan-v1.md`
 
+> **历史范围说明（2026-08-28）**：本 V1.1 文件中的前三关范围与化学决策保留为历史设计记录；content scope 已由批准的 [Reaction Tray 20 关代码 MVP 设计](../superpowers/specs/2026-08-27-reaction-tray-20-level-design.md) supersede。本文不重写前三关的历史化学结论。
+
 ## 1. 本版结论
 
 V1.1 保留 V1.0 的核心玩法和 React + TypeScript + Vite 技术路线，但不把概念关卡表当成可执行关卡。开发分成两个门：
