@@ -38,6 +38,17 @@ git status --short --branch
 
 `npm run test:e2e` 输出过一条 Node 环境 warning：`The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.` 这是非功能性的终端环境 warning，不是产品 failure；测试仍为 36/36，页面和 console error 均为 0。
 
+### 主审复核补充
+
+主审在最终 fresh gate 的第一次默认 E2E 运行中观察到一次 WebKit 导航层偶发：L3 用例停在 `page.goto('/')` 并于 30 秒超时，结果为 35/36；该用例尚未进入任何游戏交互。随即完成以下定向排查，期间未改代码或配置：
+
+- 本地服务连续 10 次返回 HTTP 200，响应时间为 1.1–1.8ms；
+- 同一 WebKit L3 用例串行重复 10 次，结果 10/10 通过；
+- 以未改动的默认配置重跑完整 E2E，结果 36/36 通过；
+- solver 专项仍为 26/26，独立逐关探针仍为 20/20 solved，节点与本报告表格完全一致。
+
+因此该事件记录为一次浏览器运行器导航偶发，而非已复现的产品缺陷；报告保留首次红灯与复核过程，不以重跑结果掩盖它。现有 CI 配置在 CI 环境保留 2 次 retry，本地默认仍为 0 次 retry。
+
 ## 2. Content 与 solver
 
 内容校验的精确输出为：
