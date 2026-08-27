@@ -100,6 +100,7 @@ export function applyCommand(current: GameState, command: GameCommand, context: 
     next.tray.push({ tileId: tile.tileId, speciesId: tile.speciesId })
     next.moveCount += 1
   } else {
+    if (current.status !== 'playing' && current.status !== 'awaiting-condition') return { state: current, effects: [] }
     if (!context.level.availableConditionIds.includes(command.conditionId)) return { state: current, effects: [] }
     const condition = context.conditions.find((item) => item.id === command.conditionId)!
     next.activeConditionIds = condition.category === 'energy'
