@@ -1,10 +1,13 @@
 import { expect, test } from '@playwright/test'
 
-test('exposes all twenty levels as flat navigation buttons', async ({ page }) => {
+test('exposes four chapter tabs with five current-chapter levels', async ({ page }) => {
   await page.goto('/')
   const levelButtons = page.getByRole('button', { name: /选择第 \d+ 关/ })
-  await expect(levelButtons).toHaveCount(20)
-  await levelButtons.nth(19).click()
+  await expect(page.locator('[data-testid^="chapter-tab-"]')).toHaveCount(4)
+  await expect(levelButtons).toHaveCount(5)
+  await page.getByTestId('chapter-tab-4').click()
+  await expect(levelButtons).toHaveCount(5)
+  await page.getByRole('button', { name: /选择第 20 关/ }).click()
   await expect(page.getByRole('heading', { name: '双沉淀终局' })).toBeVisible()
 })
 
@@ -82,6 +85,7 @@ test('level 3 exposes failure and supports a clean retry', async ({ page }) => {
   await page.goto('/?level=3')
   for (const name of ['l3-decoy-h-1', 'l3-decoy-cl-1', 'l3-oh-1', 'l3-decoy-h-2', 'l3-decoy-cl-2', 'l3-oh-3', 'l3-decoy-cl-3']) await page.getByTestId(name).click()
   await expect(page.getByRole('status')).toContainText('关卡失败')
+  await expect(page.getByText('本轮实验失败')).toBeVisible()
   await expect(page.getByRole('button', { name: '重新开始' })).toBeVisible()
   await page.getByRole('button', { name: '重新开始' }).click()
   await expect(page.getByText('0 / 2')).toBeVisible()

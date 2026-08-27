@@ -1,14 +1,20 @@
 import { useEffect, useMemo, useRef, useState, type CSSProperties } from 'react'
 import { conditions } from '../content/conditions'
-import { levels } from '../content/levels'
+import { chapters, levels } from '../content/levels'
 import { reactions } from '../content/reactions'
 import { species } from '../content/species'
 import { applyCommand, createGame, selectableTileIds, type EngineContext, type GameCommand, type GameEffect } from './engine'
 import { getLossFeedback } from './feedback'
+import { buildGoalView } from './goalProgress'
+import { solveLevel } from './solver'
+import { ChapterNavigator } from './components/ChapterNavigator'
+import { GoalPanel } from './components/GoalPanel'
+import { OutcomePanel } from './components/OutcomePanel'
+import { mergeResult, readStoredProgress, score, writeProgress, type BestStars, type StoredProgressV2 } from './progress'
 import './game.css'
 
 const requestedLevel = Number(new URLSearchParams(window.location.search).get('level') ?? '1')
-const initialLevel = Number.isInteger(requestedLevel) ? Math.min(9, Math.max(0, requestedLevel - 1)) : 0
+const initialLevel = Number.isInteger(requestedLevel) && requestedLevel >= 1 && requestedLevel <= levels.length ? requestedLevel - 1 : 0
 
 const phaseLabel = (phase: string): string => ({ aq: 'AQUEOUS', s: 'SOLID', l: 'LIQUID', g: 'GAS' }[phase] ?? 'SPECIMEN')
 const accessibleSpeciesName = (item: (typeof species)[number]): string => item.kind === 'ion' ? `水溶液中的${item.nameZh}` : item.nameZh
@@ -21,35 +27,12 @@ type TileActionSource = 'pointer' | 'keyboard'
 type SoundKind = 'select' | 'reaction' | 'win'
 type SoundProfile = { oscillator: OscillatorType; frequencies: number[]; duration: number; gain: number }
 
-const clearedLevelsStorageKey = 'reaction-tray.cleared-levels.v1'
 const soundEnabledStorageKey = 'reaction-tray.sound-enabled.v1'
 
 const soundProfiles: Record<SoundKind, SoundProfile> = {
   select: { oscillator: 'sine', frequencies: [440, 660], duration: 0.08, gain: 0.045 },
   reaction: { oscillator: 'triangle', frequencies: [262, 392, 523], duration: 0.18, gain: 0.055 },
   win: { oscillator: 'sine', frequencies: [523, 659, 784], duration: 0.36, gain: 0.065 },
-}
-
-const readClearedLevelIds = (): string[] => {
-  try {
-    const raw = window.localStorage.getItem(clearedLevelsStorageKey)
-    if (!raw) return []
-    const parsed: unknown = JSON.parse(raw)
-    if (!Array.isArray(parsed)) return []
-    return [...new Set(parsed.filter((levelId): levelId is string => typeof levelId === 'string'))]
-  } catch {
-    return []
-  }
-}
-
-const mergeClearedLevelId = (levelId: string): string[] => {
-  const merged = [...new Set([...readClearedLevelIds(), levelId])]
-  try {
-    window.localStorage.setItem(clearedLevelsStorageKey, JSON.stringify(merged))
-  } catch {
-    // Keep the in-memory record when browser storage is unavailable.
-  }
-  return merged
 }
 
 const readSoundEnabled = (): boolean => {
@@ -140,7 +123,9 @@ export function GameScreen() {
   const [activeCues, setActiveCues] = useState<ReactionCue[]>([])
   const [effectReceipts, setEffectReceipts] = useState<EffectReceipt[]>([])
   const [hintedTileId, setHintedTileId] = useState<string | null>(null)
-  const [clearedLevelIds, setClearedLevelIds] = useState(readClearedLevelIds)
+  const [hintFocus, setHintFocus] = useState<{ kind: 'tile'; tileId: string } | { kind: 'condition'; conditionId: string } | null>(null)
+  const [hintMessage, setHintMessage] = useState<string | null>(null)
+  const [progressState, setProgressState] = useState<StoredProgressV2>(() => readStoredProgress())
   const [soundEnabled, setSoundEnabled] = useState(readSoundEnabled)
   const [targetHighlightActive, setTargetHighlightActive] = useState(false)
   const [targetHighlightCycle, setTargetHighlightCycle] = useState(0)
@@ -166,18 +151,14 @@ export function GameScreen() {
     .map((tileId) => level.board.find((tile) => tile.tileId === tileId))
     .map((tile) => tile ? speciesById.get(tile.speciesId)?.formula : undefined)
     .filter((formula): formula is string => Boolean(formula))
-  const goal = level.goals[0]
-  const target = goal?.kind === 'produce' ? speciesById.get(goal.targetSpeciesId) : undefined
+  const goalView = useMemo(() => buildGoalView(level, state, reactions, species), [level, state])
   const targetReactantSpeciesIds = useMemo(() => {
-    if (goal?.kind !== 'produce') return new Set<string>()
+    if (goalView.kind !== 'produce') return new Set<string>()
     const allowed = new Set(level.allowedReactions.map((entry) => entry.reactionId))
     return new Set(reactions
-      .filter((reaction) => allowed.has(reaction.id) && reaction.products.some((product) => product.speciesId === goal.targetSpeciesId))
+      .filter((reaction) => allowed.has(reaction.id) && reaction.products.some((product) => product.speciesId === goalView.targetSpeciesId))
       .flatMap((reaction) => reaction.reactants.map((reactant) => reactant.speciesId)))
-  }, [goal, level])
-  const produced = goal?.kind === 'produce' ? (state.produced[goal.targetSpeciesId] ?? 0) : 0
-  const goalCount = goal?.kind === 'produce' ? goal.count : 0
-  const progress = goalCount > 0 ? Math.min(100, (produced / goalCount) * 100) : 0
+  }, [goalView, level])
   const latestReceipt = effectReceipts[0]
   const awaitingCondition = state.status === 'awaiting-condition'
   const hintCopy = hintedTileId
@@ -196,11 +177,13 @@ export function GameScreen() {
           ? '第 3 步 · 观察槽中产物与目标变化'
           : null
     : null
-  const feedbackCopy = hintCopy ?? coachCopy ?? feedback
-  const feedbackClassName = hintCopy ? 'feedback feedback--hint' : coachCopy ? 'feedback feedback--coach' : 'feedback'
+  const feedbackCopy = hintCopy ?? hintMessage ?? coachCopy ?? feedback
+  const feedbackClassName = hintCopy || hintMessage ? 'feedback feedback--hint' : coachCopy ? 'feedback feedback--coach' : 'feedback'
   const undoRemaining = Math.max(0, level.toolLimits.undo - state.undoUsed)
   const undoLabel = undoRemaining === 0 ? 'LIMIT REACHED' : `UNDO ${undoRemaining}/${level.toolLimits.undo}`
-  const clearedLevelIdSet = new Set(clearedLevelIds)
+  const currentProgress = progressState.levels[level.id]
+  const currentStars: 0 | BestStars = state.status === 'won' ? score(state, level.starRules) : 0
+  const hintRemaining = Math.max(0, level.toolLimits.hint - state.hintUsed)
   const statusLabel = state.status === 'won'
     ? 'COMPLETE'
     : state.status === 'lost'
@@ -339,7 +322,8 @@ export function GameScreen() {
   }
 
   const copyResult = async () => {
-    const resultText = `REACTION TRAY L${level.order} · ${state.moveCount} MOVES · COMPLETE`
+    const resultStars = score(state, level.starRules)
+    const resultText = `REACTION TRAY L${level.order} · ${state.moveCount} MOVES · ${'★'.repeat(resultStars)} · COMPLETE`
     if (typeof navigator.clipboard?.writeText !== 'function') {
       if (mounted.current) setFeedback('复制失败，请手动记录。')
       return
@@ -356,9 +340,13 @@ export function GameScreen() {
     const previous = previousStatus.current
     previousStatus.current = state.status
     if (previous !== 'won' && state.status === 'won') {
-      setClearedLevelIds(() => mergeClearedLevelId(level.id))
+      setProgressState((previousProgress) => {
+        const next = mergeResult(previousProgress, { levelId: level.id, moves: state.moveCount, stars: score(state, level.starRules) as BestStars })
+        writeProgress(next)
+        return next
+      })
     }
-  }, [level.id, state.status])
+  }, [level.id, state, state.status, state.moveCount, level.starRules])
 
   useEffect(() => {
     mounted.current = true
@@ -382,10 +370,41 @@ export function GameScreen() {
     focusable?.focus()
   }, [visibleTiles])
 
+  const handleHint = () => {
+    if (state.status !== 'playing' && state.status !== 'awaiting-condition') return
+    const result = solveLevel(context, { maxNodes: 200000, timeoutMs: 3000 }, state)
+    const nextCommand = result.status === 'solved' ? result.path[0] : undefined
+    if (!nextCommand) {
+      setHintFocus(null)
+      setHintMessage(result.status === 'unsolved'
+        ? '当前局面没有可验证路线。'
+        : '当前局面没有在提示预算内找到可验证路线。')
+      return
+    }
+
+    const applied = applyCommand(state, { type: 'use-hint' }, context)
+    if (applied.state === state || applied.state.hintUsed === state.hintUsed) {
+      setHintFocus(null)
+      setHintMessage('提示次数已用尽。')
+      return
+    }
+    setState(applied.state)
+    if (nextCommand.type === 'select-tile') {
+      setHintFocus({ kind: 'tile', tileId: nextCommand.tileId })
+      setHintMessage(`提示 · 建议取出 ${speciesById.get(level.board.find((tile) => tile.tileId === nextCommand.tileId)?.speciesId ?? '')?.formula ?? '高亮物质'}。`)
+    } else {
+      const condition = conditionById.get(nextCommand.conditionId)
+      setHintFocus({ kind: 'condition', conditionId: nextCommand.conditionId })
+      setHintMessage(`提示 · 下一步使用${condition?.nameZh ?? nextCommand.conditionId}条件。`)
+    }
+  }
+
   const send = (command: GameCommand, restoreKeyboardFocus = false) => {
     clearReactionCue(command.type === 'undo')
     if (command.type === 'select-tile' || command.type === 'undo') clearSlotFloat()
     setHintedTileId(null)
+    setHintFocus(null)
+    setHintMessage(null)
     const result = applyCommand(state, command, context)
     if (restoreKeyboardFocus && command.type === 'select-tile') {
       pendingKeyboardFocus.current = { preferredTileId: nextKeyboardFocusTileId(command.tileId, result.state, level) }
@@ -421,6 +440,8 @@ export function GameScreen() {
     clearTargetHighlight()
     pendingKeyboardFocus.current = null
     setHintedTileId(null)
+    setHintFocus(null)
+    setHintMessage(null)
     setState(createGame(level))
     setFeedback('实验台已复位 · 选择未被遮挡的物质卡。')
   }
@@ -431,14 +452,21 @@ export function GameScreen() {
     clearTargetHighlight()
     pendingKeyboardFocus.current = null
     setHintedTileId(null)
+    setHintFocus(null)
+    setHintMessage(null)
     setLevelIndex(index)
     setState(createGame(levels[index]))
+    const url = new URL(window.location.href)
+    url.searchParams.set('level', String(index + 1))
+    window.history.replaceState(null, '', url)
     setFeedback('实验台已切换 · 选择未被遮挡的物质卡。')
   }
 
   const handleTileAction = (tileId: string, source: TileActionSource = 'pointer') => {
     const isSelectable = state.status === 'playing' && selectable.has(tileId)
     if (!isSelectable) {
+      setHintFocus(null)
+      setHintMessage(null)
       setHintedTileId(tileId)
       return
     }
@@ -503,51 +531,20 @@ export function GameScreen() {
           </div>
         </header>
 
-        <nav className="level-selector" aria-label="关卡选择">
-          {levels.map((item, index) => (
-            <button
-              key={item.id}
-              type="button"
-              className={index === levelIndex ? 'level-button level-button--active' : 'level-button'}
-              onClick={() => chooseLevel(index)}
-              aria-pressed={index === levelIndex}
-            >
-              <span className="level-index">{String(index + 1).padStart(2, '0')}</span>
-              <span>选择第 {index + 1} 关</span>
-              {clearedLevelIdSet.has(item.id) && <span className="level-cleared">CLEARED</span>}
-            </button>
-          ))}
-        </nav>
+        <ChapterNavigator
+          chapters={chapters}
+          levels={levels}
+          currentLevelOrder={level.order}
+          progress={progressState}
+          onSelectLevel={chooseLevel}
+        />
 
-        <section className="target-panel" aria-labelledby="target-heading">
-          <div className="target-copy">
-            <p className="panel-kicker">TARGET OUTPUT / {level.id.replace('level.', '').toUpperCase()}</p>
-            <h2 id="target-heading">{level.titleZh}</h2>
-            <p>{level.objectiveTextZh}</p>
-          </div>
-          <div className="target-readout" aria-label={`目标进度 ${produced} / ${goalCount}`}>
-            {target ? (
-              <button
-                type="button"
-                className={[
-                  'target-formula',
-                  targetHighlightActive ? 'target-formula--active' : '',
-                  state.status === 'won' ? 'target-formula--won' : '',
-                ].filter(Boolean).join(' ')}
-                aria-pressed={targetHighlightActive}
-                aria-label={`目标产物 ${target.formula}，${targetHighlightActive ? '重新提示' : '查看'}对应反应物`}
-                onClick={triggerTargetHighlight}
-              >
-                {target.formula}
-              </button>
-            ) : <span className="target-formula">—</span>}
-            <strong>{produced} / {goalCount}</strong>
-            <span className="target-progress" aria-hidden="true">
-              <span style={{ '--target-progress': `${progress}%` } as CSSProperties} />
-            </span>
-            <span className="readout-caption">OUTPUT COUNT</span>
-          </div>
-        </section>
+        <GoalPanel
+          view={goalView}
+          won={state.status === 'won'}
+          targetHighlightActive={targetHighlightActive}
+          onTargetClick={triggerTargetHighlight}
+        />
 
         <section className="field-panel" aria-labelledby="field-heading">
           <div className="panel-bar">
@@ -576,10 +573,13 @@ export function GameScreen() {
                     'tile',
                     isSelectable ? 'tile--open' : 'tile--locked',
                     hintedBlockerIds.has(tile.tileId) ? 'tile--blocking' : '',
+                    hintFocus?.kind === 'tile' && hintFocus.tileId === tile.tileId ? 'tile--solver-hint' : '',
                     targetHighlightActive && targetReactantSpeciesIds.has(tile.speciesId) ? 'tile--target-reactant' : '',
                   ].filter(Boolean).join(' ')}
                   style={style}
+                  data-hint-focus={hintFocus?.kind === 'tile' && hintFocus.tileId === tile.tileId ? 'tile' : undefined}
                   aria-disabled={isSelectable ? undefined : true}
+                  aria-describedby={hintFocus?.kind === 'tile' && hintFocus.tileId === tile.tileId ? 'feedback-message' : undefined}
                   ref={(element) => {
                     if (element) tileRefs.current.set(tile.tileId, element)
                     else tileRefs.current.delete(tile.tileId)
@@ -695,9 +695,16 @@ export function GameScreen() {
                   <button
                     key={conditionId}
                     type="button"
-                    className={active ? 'condition-button condition-button--active' : 'condition-button'}
+                    data-testid={`condition-${conditionId}`}
+                    data-hint-focus={hintFocus?.kind === 'condition' && hintFocus.conditionId === conditionId ? 'condition' : undefined}
+                    className={[
+                      'condition-button',
+                      active ? 'condition-button--active' : '',
+                      hintFocus?.kind === 'condition' && hintFocus.conditionId === conditionId ? 'condition-button--hinted' : '',
+                    ].filter(Boolean).join(' ')}
                     disabled={state.status !== 'playing' && state.status !== 'awaiting-condition'}
                     aria-pressed={active}
+                    aria-describedby={hintFocus?.kind === 'condition' && hintFocus.conditionId === conditionId ? 'feedback-message' : undefined}
                     onClick={() => send({ type: 'activate-condition', conditionId })}
                   >
                     <span>{condition?.nameZh ?? conditionId}</span>
@@ -719,28 +726,41 @@ export function GameScreen() {
             <span>撤回上一步</span>
             <small>{undoLabel}</small>
           </button>
+          <button
+            type="button"
+            className="hint-button"
+            data-testid="hint-button"
+            disabled={(state.status !== 'playing' && state.status !== 'awaiting-condition') || hintRemaining === 0}
+            aria-label={`提示（剩余 ${hintRemaining}/${level.toolLimits.hint}）`}
+            onClick={handleHint}
+          >
+            <span>提示</span>
+            <small>HINT {hintRemaining}/{level.toolLimits.hint}</small>
+          </button>
           <span className="move-readout">MOVE {String(state.moveCount).padStart(2, '0')}</span>
         </div>
 
-        <p className={feedbackClassName} role="status" aria-live="polite">{feedbackCopy}</p>
+        <p
+          id="feedback-message"
+          className={feedbackClassName}
+          data-hint-kind={hintFocus?.kind}
+          role="status"
+          aria-live="polite"
+        >{feedbackCopy}</p>
 
         {(state.status === 'won' || state.status === 'lost') && (
-          <section className={`outcome outcome--${state.status}`} aria-label={state.status === 'won' ? '关卡完成' : '关卡失败'}>
-            <div>
-              <span className="outcome-kicker">{state.status === 'won' ? 'RUN COMPLETE' : 'RUN INTERRUPTED'}</span>
-              <strong>{state.status === 'won' ? '样本链已完成' : '反应槽已封存'}</strong>
-            </div>
-            <div className="outcome-actions">
-              {state.status === 'won' && (
-                <button type="button" className="outcome-share" data-testid="share-result" onClick={copyResult}>复制成绩</button>
-              )}
-              <button type="button" onClick={restartLevel}>{state.status === 'won' ? '再做一次' : '重新开始'}</button>
-            </div>
-          </section>
+          <OutcomePanel
+            status={state.status}
+            moves={state.moveCount}
+            stars={currentStars}
+            bestMoves={currentProgress?.bestMoves ?? (state.status === 'won' ? state.moveCount : undefined)}
+            onRestart={restartLevel}
+            onCopy={copyResult}
+          />
         )}
 
         <footer className="console-footer">
-          <span>V1.1 / CHAPTER 01</span>
+          <span>V1.1 / CHAPTER {String(level.chapter).padStart(2, '0')}</span>
           <span>RULES LOCKED · ENGINE ONLINE</span>
         </footer>
       </div>
