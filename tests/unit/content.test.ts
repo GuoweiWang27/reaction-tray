@@ -5,7 +5,10 @@ import { reactions } from '../../src/content/reactions'
 import { species } from '../../src/content/species'
 import { validateAllContent, validateChemistry, validateLevels } from '../../src/content/validateContent'
 import { validateExecutableLevels } from '../../src/content/validateExecutableLevels'
-import type { ReactionDefinition, SpeciesDefinition } from '../../src/domain/types'
+import type { ConditionId, LevelDefinition, ReactionDefinition, SpeciesDefinition } from '../../src/domain/types'
+
+const conditionCount = (level: LevelDefinition, conditionId: ConditionId) =>
+  level.standardSolutionSteps.filter((step) => step.type === 'activate-condition' && step.conditionId === conditionId).length
 
 describe('content baseline', () => {
   it('contains exactly 17 balanced core reactions', () => {
@@ -13,9 +16,9 @@ describe('content baseline', () => {
     expect(validateChemistry(species, reactions)).toEqual([])
   })
 
-  it('contains ten structurally valid canonical levels', () => {
-    expect(levels).toHaveLength(10)
-    expect(levels.map((level) => level.order)).toEqual([1, 2, 3, 4, 5, 6, 7, 8, 9, 10])
+  it('contains fifteen structurally valid canonical levels', () => {
+    expect(levels).toHaveLength(15)
+    expect(levels.map((level) => level.order)).toEqual([1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15])
     expect(validateAllContent(species, reactions, conditions, levels)).toEqual([])
   })
 
@@ -32,6 +35,14 @@ describe('content baseline', () => {
         { type: 'activate-condition', conditionId: 'ignite' },
       ])
     }
+  })
+
+  it('stores the exact Chapter 3 condition counts', () => {
+    expect(levels).toHaveLength(15)
+    if (levels.length < 15) return
+    expect(conditionCount(levels[10], 'mno2')).toBe(1)
+    expect(conditionCount(levels[11], 'light')).toBe(2)
+    expect(conditionCount(levels[12], 'heat')).toBe(2)
   })
 
   it('rejects unavailable condition steps, duplicate orders and ambiguous priorities', () => {

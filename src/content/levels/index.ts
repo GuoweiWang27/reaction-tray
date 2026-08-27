@@ -1,10 +1,12 @@
 import { chapter1Levels } from './chapter-1'
 import { chapter2Levels } from './chapter-2'
+import { chapter3Levels } from './chapter-3'
 
 export { chapter1Levels } from './chapter-1'
 export { chapter2Levels } from './chapter-2'
+export { chapter3Levels } from './chapter-3'
 
-export const levels = [...chapter1Levels, ...chapter2Levels]
+export const levels = [...chapter1Levels, ...chapter2Levels, ...chapter3Levels]
 
 export const chapters = [
   { id: 1, titleZh: '比例与沉淀', levelOrders: [1, 2, 3, 4, 5] },

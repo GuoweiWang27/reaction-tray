@@ -211,6 +211,40 @@ describe('game engine', () => {
     expect(igniteState.activeConditionIds).not.toContain('ignite')
   })
 
+  it('replays Chapter 3 persistent and one-shot condition lifecycles', () => {
+    expect(levels).toHaveLength(15)
+    if (levels.length < 15) return
+
+    const catalystContext = context(10)
+    let catalystState = createGame(catalystContext.level)
+    for (const step of catalystContext.level.standardSolutionSteps) {
+      catalystState = applyCommand(catalystState, step, catalystContext).state
+    }
+    expect(catalystState.status).toBe('won')
+    expect(catalystState.performed['reaction.hydrogen-peroxide-decomposition']).toBe(2)
+    expect(catalystState.activeConditionIds).toContain('mno2')
+
+    const replayOneShot = (levelIndex: number, conditionId: 'light' | 'heat') => {
+      const lifecycleContext = context(levelIndex)
+      let state = createGame(lifecycleContext.level)
+      const activeAfterActivation: string[][] = []
+      for (const step of lifecycleContext.level.standardSolutionSteps) {
+        state = applyCommand(state, step, lifecycleContext).state
+        if (step.type === 'activate-condition' && step.conditionId === conditionId) activeAfterActivation.push(state.activeConditionIds)
+      }
+      return { state, activeAfterActivation }
+    }
+
+    const light = replayOneShot(11, 'light')
+    const heat = replayOneShot(12, 'heat')
+    expect(light.state.status).toBe('won')
+    expect(light.state.performed['reaction.silver-chloride-photolysis']).toBe(2)
+    expect(light.activeAfterActivation).toEqual([[], []])
+    expect(heat.state.status).toBe('won')
+    expect(heat.state.performed['reaction.sodium-bicarbonate-decomposition']).toBe(2)
+    expect(heat.activeAfterActivation).toEqual([[], []])
+  })
+
   it('wins only when an ordered sequence matches reaction history exactly', () => {
     const ctx: EngineContext = { level: l19Level, reactions, conditions }
     const correctSequence = run(createGame(l19Level), [

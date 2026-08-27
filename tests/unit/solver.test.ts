@@ -60,13 +60,33 @@ describe.each(levels)('$id', (level) => {
     expect(result.path.length).toBeGreaterThan(0)
     expect(result.safeFirstSteps.length).toBeGreaterThan(0)
     expect(result.path[0]).toMatchObject({ type: 'select-tile' })
-    if (level.order >= 9) {
+    if (level.order === 9 || level.order === 10) {
       expect(result.path.filter((step) => step.type === 'activate-condition' && step.conditionId === 'ignite')).toHaveLength(2)
     }
   })
 })
 
 describe('progress command solver', () => {
+  it('covers all fifteen canonical levels', () => {
+    expect(levels).toHaveLength(15)
+  })
+
+  it('finds the required Chapter 3 condition commands', () => {
+    expect(levels).toHaveLength(15)
+    if (levels.length < 15) return
+    const solve = (levelIndex: number) => solveLevel({ level: levels[levelIndex], reactions, conditions }, { maxNodes: 200_000, timeoutMs: 3_000 })
+    const catalyst = solve(10)
+    const light = solve(11)
+    const heat = solve(12)
+
+    expect(catalyst.status).toBe('solved')
+    expect(light.status).toBe('solved')
+    expect(heat.status).toBe('solved')
+    if (catalyst.status === 'solved') expect(catalyst.path.filter((step) => step.type === 'activate-condition' && step.conditionId === 'mno2')).toHaveLength(1)
+    if (light.status === 'solved') expect(light.path.filter((step) => step.type === 'activate-condition' && step.conditionId === 'light')).toHaveLength(2)
+    if (heat.status === 'solved') expect(heat.path.filter((step) => step.type === 'activate-condition' && step.conditionId === 'heat')).toHaveLength(2)
+  })
+
   it('finds condition commands and exposes safe first steps', () => {
     const context: EngineContext = { level: conditionLevel, reactions, conditions }
     const result = solveLevel(context, { maxNodes: 200_000, timeoutMs: 3_000 })
