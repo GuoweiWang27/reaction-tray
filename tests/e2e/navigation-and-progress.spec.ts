@@ -6,6 +6,17 @@ const solveLevelOne = async (page: Page) => {
   }
 }
 
+test('offers a deterministic route back to the CHEMAI101 home page', async ({ page }) => {
+  await page.goto('/?level=1')
+  const standaloneHomeLink = page.getByTestId('chemai-home-link')
+  await expect(standaloneHomeLink).toBeVisible()
+  await expect(standaloneHomeLink).toHaveAccessibleName('返回 CHEMAI101 主页')
+  await expect(standaloneHomeLink).toHaveAttribute('href', 'https://chemai101.guoweiwang.com/')
+
+  await page.goto('/reaction-tray/?level=1')
+  await expect(page.getByTestId('chemai-home-link')).toHaveAttribute('href', '/')
+})
+
 test('navigates four chapters, five levels, direct URLs, and invalid URLs', async ({ page }) => {
   await page.goto('/?level=20')
   await expect(page.getByRole('heading', { name: '双沉淀终局' })).toBeVisible()

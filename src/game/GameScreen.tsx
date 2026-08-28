@@ -15,6 +15,9 @@ import './game.css'
 
 const requestedLevel = Number(new URLSearchParams(window.location.search).get('level') ?? '1')
 const initialLevel = Number.isInteger(requestedLevel) && requestedLevel >= 1 && requestedLevel <= levels.length ? requestedLevel - 1 : 0
+const chemAiHomeHref = window.location.pathname.startsWith('/reaction-tray')
+  ? '/'
+  : 'https://chemai101.guoweiwang.com/'
 
 const phaseLabel = (phase: string): string => ({ aq: 'AQUEOUS', s: 'SOLID', l: 'LIQUID', g: 'GAS' }[phase] ?? 'SPECIMEN')
 const phaseShortLabel = (phase: string): string => ({ aq: 'AQ', s: 'S', l: 'L', g: 'G' }[phase] ?? '?')
@@ -543,6 +546,15 @@ export function GameScreen() {
       <div className="console">
         <header className="instrument-header">
           <div className="title-lockup">
+            <a
+              className="home-link"
+              data-testid="chemai-home-link"
+              href={chemAiHomeHref}
+              aria-label="返回 CHEMAI101 主页"
+            >
+              <span className="home-link-arrow" aria-hidden="true">←</span>
+              <span>返回 CHEMAI101</span>
+            </a>
             <p className="brand-mark">CHEMISTRY PUZZLE <span>/</span> FIELD UNIT</p>
             <h1 aria-label="反应槽，Reaction Tray">
               <span className="game-title-zh">反应槽</span>

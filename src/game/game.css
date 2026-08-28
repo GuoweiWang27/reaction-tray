@@ -100,6 +100,49 @@ body {
   min-width: 0;
 }
 
+.home-link {
+  display: inline-flex;
+  min-height: 44px;
+  align-items: center;
+  gap: 7px;
+  margin: -6px 0 2px;
+  padding: 0 2px;
+  border-radius: var(--radius-card);
+  color: var(--sand-dark);
+  font-family: var(--mono-font);
+  font-size: var(--text-micro);
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-decoration: none;
+  transition: color 160ms ease, transform 160ms ease;
+}
+
+.home-link-arrow {
+  display: grid;
+  width: 24px;
+  height: 24px;
+  place-items: center;
+  border: 1px solid var(--sand);
+  border-radius: var(--radius-chip);
+  background: var(--sand-pale);
+  font-size: 0.875rem;
+  line-height: 1;
+  transition: border-color 160ms ease, background-color 160ms ease, transform 160ms ease;
+}
+
+.home-link:hover,
+.home-link:focus-visible {
+  color: var(--crimson-deep);
+  transform: translateX(-1px);
+}
+
+.home-link:hover .home-link-arrow,
+.home-link:focus-visible .home-link-arrow {
+  border-color: var(--crimson);
+  background: var(--crimson-pale);
+  transform: translateX(-2px);
+}
+
 .instrument-header h1 {
   display: flex;
   align-items: flex-end;
