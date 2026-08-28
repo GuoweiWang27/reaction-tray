@@ -791,8 +791,8 @@ button.target-formula:focus-visible,
   display: flex;
   width: calc(var(--w) * 8.333% - 5px);
   min-width: 52px;
-  height: 72px;
-  min-height: 72px;
+  height: 82px;
+  min-height: 82px;
   flex-direction: column;
   align-items: flex-start;
   justify-content: flex-start;
@@ -902,12 +902,14 @@ button.target-formula:focus-visible,
 }
 
 .tile-meta {
-  display: flex;
+  display: grid;
   width: 100%;
   min-width: 0;
-  align-items: center;
-  justify-content: space-between;
-  gap: 3px;
+  grid-template-columns: minmax(0, 1fr) auto;
+  grid-template-rows: minmax(0, auto) auto;
+  align-items: start;
+  column-gap: 3px;
+  row-gap: 2px;
   margin-top: auto;
   padding-top: 4px;
   border-top: 1px solid var(--line);
@@ -916,20 +918,27 @@ button.target-formula:focus-visible,
 }
 
 .tile-name {
+  display: -webkit-box;
+  grid-column: 1 / -1;
+  grid-row: 1;
   min-width: 0;
-  flex: 1 1 auto;
+  max-height: 2.4em;
   overflow: hidden;
   font-family: var(--body-font);
   font-size: var(--text-micro);
   font-weight: 600;
   line-height: 1.2;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  overflow-wrap: anywhere;
+  white-space: normal;
 }
 
 .tile-phase {
   display: inline-block;
-  flex: 0 0 auto;
+  grid-column: 2;
+  grid-row: 2;
+  justify-self: end;
   margin: 0;
   padding: 2px 2px 1px;
   border: 1px solid var(--sand);
