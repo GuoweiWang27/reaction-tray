@@ -96,7 +96,14 @@ body {
   color: var(--sand-dark);
 }
 
+.title-lockup {
+  min-width: 0;
+}
+
 .instrument-header h1 {
+  display: flex;
+  align-items: flex-end;
+  gap: 9px;
   max-width: none;
   margin: 0;
   color: var(--ink);
@@ -104,6 +111,19 @@ body {
   font-size: clamp(2.2rem, 10vw, 3.2rem);
   font-weight: 600;
   line-height: 0.95;
+}
+
+.game-title-zh {
+  white-space: nowrap;
+}
+
+.game-title-en {
+  padding-bottom: 3px;
+  color: var(--crimson-deep);
+  font-size: clamp(0.8rem, 3.2vw, 0.95rem);
+  font-weight: 600;
+  letter-spacing: 0.01em;
+  line-height: 0.92;
 }
 
 .run-status {
@@ -921,6 +941,8 @@ button.target-formula:focus-visible,
   display: -webkit-box;
   grid-column: 1 / -1;
   grid-row: 1;
+  justify-self: center;
+  width: 100%;
   min-width: 0;
   max-height: 2.4em;
   overflow: hidden;
@@ -931,6 +953,7 @@ button.target-formula:focus-visible,
   -webkit-box-orient: vertical;
   -webkit-line-clamp: 2;
   overflow-wrap: anywhere;
+  text-align: center;
   white-space: normal;
 }
 

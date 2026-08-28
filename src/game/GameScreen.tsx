@@ -542,9 +542,12 @@ export function GameScreen() {
     <main className="game-shell" data-game-status={state.status}>
       <div className="console">
         <header className="instrument-header">
-          <div>
-            <p className="brand-mark">REACTION TRAY <span>/</span> FIELD UNIT</p>
-            <h1>反应槽</h1>
+          <div className="title-lockup">
+            <p className="brand-mark">CHEMISTRY PUZZLE <span>/</span> FIELD UNIT</p>
+            <h1 aria-label="反应槽，Reaction Tray">
+              <span className="game-title-zh">反应槽</span>
+              <span className="game-title-en" lang="en">Reaction<br />Tray</span>
+            </h1>
           </div>
           <div className="header-actions">
             <div className="run-status" aria-label={`当前状态 ${statusLabel}`}>
